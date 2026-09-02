@@ -1,0 +1,47 @@
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Misma identidad visual que piso_fase1/generate_landing.py (Fase 1) --
+   el producto y el marketing comparten paleta y tipografía a propósito. */
+:root {
+  --font-display: "Bricolage Grotesque", ui-sans-serif, sans-serif;
+  --font-body: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --bg: 231 226 214;       /* #E7E2D6 */
+  --surface: 251 249 244;  /* #FBF9F4 */
+  --ink: 27 24 17;         /* #1B1811 */
+  --ink-soft: 92 87 71;    /* #5C5747 */
+  --gold: 140 106 30;      /* #8C6A1E */
+  --teal: 38 68 63;        /* #26443F */
+  --line: 214 207 188;     /* #D6CFBC */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: 20 18 13;
+    --surface: 30 27 21;
+    --ink: 241 236 223;
+    --ink-soft: 179 171 150;
+    --gold: 223 172 87;
+    --teal: 111 170 158;
+    --line: 51 45 32;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: 20 18 13;
+  --surface: 30 27 21;
+  --ink: 241 236 223;
+  --ink-soft: 179 171 150;
+  --gold: 223 172 87;
+  --teal: 111 170 158;
+  --line: 51 45 32;
+}
+
+body {
+  background: rgb(var(--bg));
+  color: rgb(var(--ink));
+}
