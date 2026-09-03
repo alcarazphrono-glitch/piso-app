@@ -97,12 +97,21 @@ export default function AdminEventosPage() {
   }, [router]);
 
   function mensajeError(e: unknown): string {
-    const msg = e instanceof Error ? e.message : String(e);
-    // Los mensajes de las funciones SECURITY DEFINER (ej. "No autorizado:
-    // se requiere rol de operador") llegan tal cual en e.message -- se
-    // muestran directo, sin envolver, porque ya están escritos para un
-    // humano (ver migración 0002_piso_core_v1.sql).
-    return msg;
+    // Bug del primer intento: los errores de Supabase/Postgrest NO son
+    // instancias de Error -- son objetos planos {message, code, details,
+    // hint}. `e instanceof Error` daba false y String(e) regresaba
+    // "[object Object]" en vez del mensaje real. Esto revisa .message
+    // antes de caer a JSON.stringify como último recurso.
+    if (e instanceof Error) return e.message;
+    if (typeof e === "object" && e !== null && "message" in e) {
+      const m = (e as { message?: unknown }).message;
+      if (typeof m === "string" && m) return m;
+    }
+    try {
+      return JSON.stringify(e);
+    } catch {
+      return String(e);
+    }
   }
 
   async function crear(e: React.FormEvent) {
