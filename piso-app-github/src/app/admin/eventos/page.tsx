@@ -32,6 +32,7 @@ import {
   listarEventosCore,
   resolverEventoCore,
 } from "@/lib/core";
+import { mensajeError } from "@/lib/errores";
 
 const ESTADO_SIGUIENTE: Partial<Record<EventoCore["estado"], EventoCore["estado"]>> = {
   borrador: "abierto",
@@ -96,24 +97,6 @@ export default function AdminEventosPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
-
-  function mensajeError(e: unknown): string {
-    // Bug del primer intento: los errores de Supabase/Postgrest NO son
-    // instancias de Error -- son objetos planos {message, code, details,
-    // hint}. `e instanceof Error` daba false y String(e) regresaba
-    // "[object Object]" en vez del mensaje real. Esto revisa .message
-    // antes de caer a JSON.stringify como último recurso.
-    if (e instanceof Error) return e.message;
-    if (typeof e === "object" && e !== null && "message" in e) {
-      const m = (e as { message?: unknown }).message;
-      if (typeof m === "string" && m) return m;
-    }
-    try {
-      return JSON.stringify(e);
-    } catch {
-      return String(e);
-    }
-  }
 
   async function crear(e: React.FormEvent) {
     e.preventDefault();
