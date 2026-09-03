@@ -9,20 +9,15 @@ import { supabase } from "./supabase";
  * (onConflict evita duplicar el balance y resetear los $1,000 en cada login).
  */
 export async function asegurarPerfilYBalanceDemo(userId: string) {
-  const { error: perfilError } = await supabase
-    .from("perfiles")
-    .upsert({ user_id: userId, piso: "tierra" }, { onConflict: "user_id", ignoreDuplicates: true });
-
-  if (perfilError) throw perfilError;
-
-  const { error: balanceError } = await supabase
-    .from("balances")
-    .upsert(
-      { user_id: userId, demo_balance: 1000, modo: "demo" },
-      { onConflict: "user_id", ignoreDuplicates: true }
-    );
-
-  if (balanceError) throw balanceError;
+  // PISO Core V1 (migración 0002_piso_core_v1.sql): el upsert directo a
+  // perfiles/balances se retiró -- RLS ya no deja escribir esas filas
+  // desde el cliente. iniciar_balance_demo() hace lo mismo del lado
+  // servidor: crea perfil + balance de $1,000 la primera vez, no hace
+  // nada si ya existen, y deja un movimiento en el ledger. El userId que
+  // recibe este parámetro ya no se usa para escribir -- la función usa
+  // auth.uid() de la sesión, no lo que le pasa el cliente.
+  const { error } = await supabase.rpc("iniciar_balance_demo");
+  if (error) throw error;
 }
 
 export async function obtenerBalance(userId: string) {

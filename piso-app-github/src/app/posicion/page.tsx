@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { EVENTOS, Posicion, Resultado } from "@/types";
+import { EVENTOS, Posicion } from "@/types";
 import { DIAS_HASTA_RESOLUCION } from "@/lib/config";
 import { Screen, Wordmark, H1, Lede, SecondaryButton, Card, Mono } from "@/components/ui";
 
@@ -40,37 +40,31 @@ function PosicionContenido() {
     });
   }, [posicionId, router]);
 
+  // PISO Core V1 (migración 0002_piso_core_v1.sql, memo de arquitectura
+  // 3-sep-2026): antes esta función decidía el resultado con Math.random()
+  // en el navegador y escribía posiciones/balances con dos updates
+  // directos -- el cliente era la autoridad. Ahora solo pide que se
+  // resuelva; simular_resultado_posicion_demo() corre en el servidor,
+  // valida (con auth.uid(), no con nada que mande este código) que la
+  // posición es de quien llama, y es la que decide y escribe.
+  //
+  // Sigue siendo simulación por posición, independiente por usuario --
+  // no el Resolution Engine oficial (ver resolver_evento(), que usa un
+  // operador desde PISO Core para resolver el evento una sola vez para
+  // todos). Se mantiene así a propósito para no bloquear la beta de
+  // Track A.
   async function simularResultadoAhora() {
     if (!posicion) return;
     setSimulando(true);
 
-    const evento = EVENTOS.find((e) => e.id === posicion.evento_id) ?? EVENTOS[0];
-    const ocurrio = Math.random() < evento.probabilidad;
-    const acerto = (posicion.respuesta === "si") === ocurrio;
-    const resultado: Resultado = acerto ? "gano" : "no_gano";
+    const { data, error } = await supabase.rpc("simular_resultado_posicion_demo", {
+      p_posicion_id: posicion.id,
+    });
 
-    const { error: updError } = await supabase
-      .from("posiciones")
-      .update({ estado: "resuelta", resultado, resuelta_en: new Date().toISOString() })
-      .eq("id", posicion.id);
-    if (updError) {
+    if (error || !data || data.length === 0) {
       setSimulando(false);
       alert("No se pudo resolver la posición. Intenta de nuevo.");
       return;
-    }
-
-    if (resultado === "gano") {
-      const { data: sess } = await supabase.auth.getSession();
-      const user = sess.session?.user;
-      if (user) {
-        const { data: bal } = await supabase
-          .from("balances")
-          .select("demo_balance")
-          .eq("user_id", user.id)
-          .single();
-        const nuevoBalance = (bal?.demo_balance ?? 0) + posicion.premio_potencial;
-        await supabase.from("balances").update({ demo_balance: nuevoBalance }).eq("user_id", user.id);
-      }
     }
 
     router.push(`/resultado?id=${posicion.id}`);
