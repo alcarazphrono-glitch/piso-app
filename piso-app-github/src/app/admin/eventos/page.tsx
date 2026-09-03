@@ -57,6 +57,7 @@ function formVacio(): NuevoEventoCore {
     fecha_display: "",
     fecha_contexto: "",
     fuente_resolucion: "",
+    premio_override: null,
   };
 }
 
@@ -226,6 +227,21 @@ export default function AdminEventosPage() {
             value={form.fecha_display}
             onChange={(e) => setForm({ ...form, fecha_display: e.target.value })}
           />
+          <input
+            type="number"
+            step="1"
+            min="0"
+            className="col-span-2 rounded-lg border border-line px-3 py-2"
+            placeholder="Premio (override) -- déjalo vacío para usar la fórmula placeholder"
+            value={form.premio_override ?? ""}
+            onChange={(e) =>
+              setForm({ ...form, premio_override: e.target.value === "" ? null : Number(e.target.value) })
+            }
+          />
+          <p className="col-span-2 -mt-1 text-xs text-ink-soft">
+            Si Finanzas confirma una cifra, va aquí -- así el premio se guarda igual sin tocar código.
+            Vacío = fórmula placeholder (no es cifra de negocio real todavía).
+          </p>
           <button
             type="submit"
             disabled={creando}
@@ -249,6 +265,12 @@ export default function AdminEventosPage() {
                     <p className="font-semibold">{ev.nombre}</p>
                     <p className="text-xs text-ink-soft">
                       {ev.id} · {ev.categoria ?? "sin categoría"} · probabilidad {ev.probabilidad}
+                    </p>
+                    <p className="text-xs text-ink-soft">
+                      Premio:{" "}
+                      {ev.premio_override != null
+                        ? `$${ev.premio_override.toLocaleString("es-MX")} (fijado)`
+                        : "fórmula placeholder (sin validar por Finanzas)"}
                     </p>
                   </div>
                   <span className="rounded-full border border-line px-2.5 py-1 text-xs font-medium">

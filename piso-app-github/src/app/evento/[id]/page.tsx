@@ -53,7 +53,25 @@ export default function EventoPage() {
   }, [router]);
 
   const evento = EVENTOS.find((e) => e.id === params.id && e.activo);
-  const premio = evento ? obtenerPremio(evento.id) : 0;
+  // Valor mostrado: arranca con el cálculo de cliente (obtenerPremio, ver
+  // config.ts) para no bloquear el primer render, y en cuanto responde
+  // calcular_premio_potencial() (0003_piso_core_mejoras.sql) se reemplaza
+  // por el número real de servidor -- el mismo que el trigger
+  // forzar_premio_potencial() va a guardar en el insert de abajo, pase lo
+  // que pase con lo que mande este cliente. Si la llamada falla (ej. el
+  // evento todavía no tiene fila en `eventos`), se queda con el estimado
+  // de cliente en vez de romper la pantalla.
+  const [premio, setPremio] = useState(evento ? obtenerPremio(evento.id) : 0);
+
+  useEffect(() => {
+    if (!evento) return;
+    supabase
+      .rpc("calcular_premio_potencial", { p_evento_id: evento.id })
+      .then(({ data, error }) => {
+        if (!error && typeof data === "number") setPremio(data);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evento?.id]);
 
   async function confirmar() {
     if (!evento || !respuesta) return;

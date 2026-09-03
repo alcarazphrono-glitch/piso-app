@@ -35,6 +35,7 @@ export interface EventoCore {
   fuente_resolucion: string | null;
   estado: EstadoEventoCore;
   resultado_oficial: string | null;
+  premio_override: number | null;
   creado_en: string;
   actualizado_en: string;
 }
@@ -62,6 +63,7 @@ export interface NuevoEventoCore {
   fecha_cierre?: string; // datetime-local, ISO
   fecha_resolucion?: string; // datetime-local, ISO
   fuente_resolucion?: string;
+  premio_override?: number | null; // ver 0003_piso_core_mejoras.sql -- si es null, calcular_premio_potencial() usa la fórmula placeholder
 }
 
 export async function crearEventoCore(evento: NuevoEventoCore): Promise<void> {
