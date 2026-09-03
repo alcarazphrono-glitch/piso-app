@@ -49,6 +49,19 @@ export async function listarEventosCore(): Promise<EventoCore[]> {
   return (data ?? []) as EventoCore[];
 }
 
+// Lectura de un solo evento, para Consumer (evento/[id]/page.tsx). Usa la
+// misma tabla y la misma política de lectura pública que listarEventosCore()
+// -- `eventos` es de lectura pública desde el schema.sql original ("el
+// catálogo de eventos no es información sensible"), así que no hace falta
+// gatear esto por operador ni crear una función RPC aparte. maybeSingle()
+// en vez de single(): un id que no existe regresa null, no un error --
+// Consumer ya tiene su propia pantalla de "este evento llega pronto".
+export async function obtenerEventoCore(id: string): Promise<EventoCore | null> {
+  const { data, error } = await supabase.from("eventos").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return (data as EventoCore | null) ?? null;
+}
+
 export interface NuevoEventoCore {
   id: string; // slug, ej. "america_chivas_15sep" -- lo escribe el operador, no se autogenera
   nombre: string;

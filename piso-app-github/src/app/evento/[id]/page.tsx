@@ -5,8 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { trackFunnel } from "@/lib/posthog";
 import { obtenerRacha } from "@/lib/demo";
-import { EVENTOS, Respuesta } from "@/types";
+import { Respuesta } from "@/types";
 import { TICKET_DEMO_MXN, obtenerPremio } from "@/lib/config";
+import { EventoCore, obtenerEventoCore } from "@/lib/core";
 import {
   Screen,
   BackChevron,
@@ -34,6 +35,8 @@ export default function EventoPage() {
   const [respuesta, setRespuesta] = useState<Respuesta | null>(null);
   const [confirmando, setConfirmando] = useState(false);
   const [esPrimeraPosicion, setEsPrimeraPosicion] = useState(true);
+  const [evento, setEvento] = useState<EventoCore | null>(null);
+  const [cargandoEvento, setCargandoEvento] = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
@@ -52,26 +55,37 @@ export default function EventoPage() {
     });
   }, [router]);
 
-  const evento = EVENTOS.find((e) => e.id === params.id && e.activo);
+  // Hasta el checkpoint del 3-sep-2026 `evento` salía de EVENTOS, el
+  // arreglo hardcodeado en src/types/index.ts -- por eso un evento creado
+  // en Event Manager nunca aparecía aquí (memo de Dirección,
+  // "Retroalimentación al checkpoint post-arquitectura", Falla 1). Ahora
+  // se lee de la tabla `eventos` (lectura pública, ver core.ts).
+  useEffect(() => {
+    if (!params.id) return;
+    obtenerEventoCore(params.id)
+      .then((ev) => setEvento(ev && ev.estado === "abierto" ? ev : null))
+      .catch(() => setEvento(null))
+      .finally(() => setCargandoEvento(false));
+  }, [params.id]);
+
   // Valor mostrado: arranca con el cálculo de cliente (obtenerPremio, ver
-  // config.ts) para no bloquear el primer render, y en cuanto responde
-  // calcular_premio_potencial() (0003_piso_core_mejoras.sql) se reemplaza
-  // por el número real de servidor -- el mismo que el trigger
-  // forzar_premio_potencial() va a guardar en el insert de abajo, pase lo
-  // que pase con lo que mande este cliente. Si la llamada falla (ej. el
-  // evento todavía no tiene fila en `eventos`), se queda con el estimado
-  // de cliente en vez de romper la pantalla.
-  const [premio, setPremio] = useState(evento ? obtenerPremio(evento.id) : 0);
+  // config.ts) para no bloquear el primer render -- no depende de que ya
+  // haya cargado `evento`, solo del id de la URL -- y en cuanto responde
+  // calcular_premio_potencial() (0003/0004) se reemplaza por el número
+  // real de servidor -- el mismo que el trigger forzar_premio_potencial()
+  // va a guardar en el insert de abajo, pase lo que pase con lo que mande
+  // este cliente. Si la llamada falla, se queda con el estimado de
+  // cliente en vez de romper la pantalla.
+  const [premio, setPremio] = useState(() => (params.id ? obtenerPremio(params.id) : 0));
 
   useEffect(() => {
-    if (!evento) return;
+    if (!params.id) return;
     supabase
-      .rpc("calcular_premio_potencial", { p_evento_id: evento.id })
+      .rpc("calcular_premio_potencial", { p_evento_id: params.id })
       .then(({ data, error }) => {
         if (!error && typeof data === "number") setPremio(data);
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [evento?.id]);
+  }, [params.id]);
 
   async function confirmar() {
     if (!evento || !respuesta) return;
@@ -112,7 +126,7 @@ export default function EventoPage() {
     router.push(`/posicion?id=${data.id}`);
   }
 
-  if (!autenticado) return null;
+  if (!autenticado || cargandoEvento) return null;
 
   if (!evento) {
     return (
@@ -143,13 +157,13 @@ export default function EventoPage() {
           <span className="text-xs font-semibold uppercase tracking-[0.02em] text-ink-soft">Evento verificable</span>
         </div>
         <H1>{evento.nombre}</H1>
-        <p className="mt-3 text-[14.5px] leading-relaxed text-[oklch(90%_0.006_258)]">{evento.explicacion[0]}</p>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-ink-soft">{evento.explicacion[1]}</p>
+        <p className="mt-3 text-[14.5px] leading-relaxed text-[oklch(90%_0.006_258)]">{evento.explicacion_corta}</p>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-ink-soft">{evento.explicacion_larga}</p>
       </div>
 
       <div className="mt-[18px] border-t border-line pt-4">
-        <p className="font-display text-base font-semibold">{evento.fecha}</p>
-        <p className="mt-0.5 text-[12.5px] text-ink-soft">{evento.fechaContexto}</p>
+        <p className="font-display text-base font-semibold">{evento.fecha_display}</p>
+        <p className="mt-0.5 text-[12.5px] text-ink-soft">{evento.fecha_contexto}</p>
       </div>
 
       <div className="mt-5">
