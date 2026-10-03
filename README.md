@@ -664,6 +664,11 @@ páginas nuevas incluidas.
 - **Ledger inmutable:** `ledger_movimientos` rechaza UPDATE, DELETE y TRUNCATE, también desde el SQL Editor. Una corrección se registra como un movimiento contrario. Borrar un usuario ya no borra en cascada sus movimientos ni sus boletos; la baja se hace anonimizando.
 - **Auditoría:** tabla `auditoria`, append-only, que guarda quién, qué y cuándo, con el antes y el después de cada cambio en las tablas que se editan desde /admin (eventos, productos, parámetros, operadores, contenido, reserva, referidos, tratamientos).
 - **Consentimientos:** `registrar_consentimiento(documento, version)` guarda qué términos, aviso de privacidad o bases del sorteo aceptó cada usuario. La IP y el user agent se leen de los headers de la sesión. Todavía faltan los documentos y la UI que los muestre.
+- **Eliminar cuenta:** `eliminar_mi_cuenta()` + botón en /perfil (requisito del App Store, guía 5.1.1(v)). Anonimiza: cambia el correo por uno inválido, borra la contraseña, las identidades y las sesiones, y conserva el ledger y los boletos sin datos personales. Si la cuenta tiene boletos activos, se rechaza.
 - **Sorteo verificable (commit-reveal):** sustituye el `order by random()` de `resolver_ciclo()`. Cuando un ciclo se llena, se publica en `sorteos` el hash de una semilla secreta junto con la lista de participantes. Al resolver se revela la semilla, y cualquiera puede comprobar que el ganador salió justo con `verificar_sorteo(ciclo_id)`. La fórmula está documentada en la migración.
 
 Se probó contra Postgres 16 con PostgREST, como usuario normal y como operador. La auditoría registra los cambios de admin. Un usuario no puede comprometer un sorteo antes de tiempo (permiso denegado). La semilla no se puede leer antes de resolver. El ganador recalculado coincide con el pagado y el hash se valida. UPDATE y DELETE sobre el ledger se rechazan, y la integridad de capital da 0 violaciones. La cadena completa schema.sql → 0011 corre limpia sobre una base vacía.
+
+La 0011 se puede volver a correr sin errores (políticas con `drop policy if exists`).
+
+**App nativa (Capacitor):** `/ciclo` y `/evento` ahora usan `?id=` en vez de rutas dinámicas, y `CAPACITOR_BUILD=1 npm run build` genera `out/` como sitio estático. El build de Vercel no cambia y los links viejos redirigen. Ver `/mnt/project-files/piso-app/app-store-plan.md`.

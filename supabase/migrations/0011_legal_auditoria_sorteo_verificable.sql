@@ -77,6 +77,7 @@ create index if not exists auditoria_tabla_creado_idx on public.auditoria (tabla
 
 alter table public.auditoria enable row level security;
 
+drop policy if exists "operadores leen auditoria" on public.auditoria;
 create policy "operadores leen auditoria"
   on public.auditoria for select
   using (exists (select 1 from public.operadores o where o.user_id = auth.uid()));
@@ -153,10 +154,12 @@ create table if not exists public.consentimientos (
 
 alter table public.consentimientos enable row level security;
 
+drop policy if exists "usuarios ven sus consentimientos" on public.consentimientos;
 create policy "usuarios ven sus consentimientos"
   on public.consentimientos for select
   using (auth.uid() = user_id);
 
+drop policy if exists "operadores ven consentimientos" on public.consentimientos;
 create policy "operadores ven consentimientos"
   on public.consentimientos for select
   using (exists (select 1 from public.operadores o where o.user_id = auth.uid()));
@@ -233,6 +236,7 @@ create table if not exists public.sorteos (
 
 alter table public.sorteos enable row level security;
 
+drop policy if exists "sorteos lectura pública" on public.sorteos;
 create policy "sorteos lectura pública"
   on public.sorteos for select
   using (true);
@@ -467,3 +471,58 @@ $$;
 revoke execute on function public.comprometer_sorteo(uuid, boolean) from public, anon, authenticated;
 revoke execute on function public.trg_comprometer_sorteo_al_llenar() from public, anon, authenticated;
 revoke execute on function public.registrar_auditoria() from public, anon, authenticated;
+
+
+-- =======================================================================
+-- 5. Eliminar cuenta (requisito del App Store, guía 5.1.1(v)): toda app
+-- que permite crear cuenta debe permitir borrarla desde la app. Choca con
+-- el punto 1 (no se borra historia financiera), así que "eliminar" =
+-- anonimizar: se borran o sustituyen los datos personales, se cierran las
+-- sesiones y ya no se puede entrar; ledger, boletos y consentimientos se
+-- conservan bajo un id sin nombre (Legal: conservar 5 años).
+-- =======================================================================
+alter table public.perfiles add column if not exists cuenta_eliminada_en timestamptz;
+
+create or replace function public.eliminar_mi_cuenta()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is null then
+    raise exception 'eliminar_mi_cuenta requiere sesión activa';
+  end if;
+
+  -- No se elimina una cuenta con dinero en juego: primero se resuelve o
+  -- se cancela el ciclo y el depósito regresa.
+  if exists (
+    select 1 from public.boletos b join public.ciclos c on c.id = b.ciclo_id
+    where b.user_id = v_uid and c.estado in ('llenando','lleno')
+  ) then
+    raise exception 'tienes boletos activos: podrás eliminar tu cuenta cuando se resuelvan';
+  end if;
+
+  update auth.users
+    set email = 'eliminado+' || v_uid || '@cuenta-eliminada.invalid',
+        encrypted_password = null,
+        raw_user_meta_data = '{}'::jsonb
+    where id = v_uid;
+
+  -- Tablas que solo existen en Supabase real (no en pruebas locales).
+  if to_regclass('auth.identities') is not null then
+    execute 'delete from auth.identities where user_id = $1' using v_uid;
+  end if;
+  if to_regclass('auth.sessions') is not null then
+    execute 'delete from auth.sessions where user_id = $1' using v_uid;
+  end if;
+  if to_regclass('auth.refresh_tokens') is not null then
+    execute 'delete from auth.refresh_tokens where user_id = $1::text' using v_uid;
+  end if;
+
+  delete from public.intereses_modo_real where user_id = v_uid;
+  update public.perfiles set cuenta_eliminada_en = now() where user_id = v_uid;
+end;
+$$;

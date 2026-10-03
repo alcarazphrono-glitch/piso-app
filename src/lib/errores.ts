@@ -18,6 +18,7 @@ const REGLAS: [RegExp, string][] = [
   [/ya tienes una posici[oó]n/i, "Ya estás dentro de este evento."],
   [/no est[aá] aceptando boletos|ya pas[oó] su fecha l[ií]mite/i, "Este nivel ya cerró. Elige otro."],
   [/no est[aá] abierto a nuevas posiciones/i, "Este evento ya cerró."],
+  [/boletos activos/i, "Tienes boletos activos. Podrás eliminar tu cuenta cuando se resuelvan y tu depósito regrese."],
   [/kill switch/i, "Por ahora no estamos aceptando entradas nuevas. Vuelve a intentar más tarde."],
   [/requiere sesi[oó]n activa|jwt/i, "Tu sesión expiró. Vuelve a entrar."],
   [/failed to fetch|network/i, "Sin conexión. Revisa tu internet y vuelve a intentar."],
