@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { obtenerBoleto, obtenerCiclo, Boleto, CicloConProducto } from "@/lib/boletos";
+import { obtenerBoleto, obtenerCiclo, obtenerPremioCiclo, Boleto, CicloConProducto } from "@/lib/boletos";
 import { Screen, Wordmark, BackChevron, H1, Lede, PrimaryButton, SecondaryButton, Card, Mono } from "@/components/ui";
 
 // Pantalla de "tu boleto está adentro" -- a diferencia de /posicion, aquí
@@ -19,13 +19,16 @@ function BoletoContenido() {
   const boletoId = params.get("id");
   const [boleto, setBoleto] = useState<Boleto | null>(null);
   const [ciclo, setCiclo] = useState<CicloConProducto | null>(null);
+  const [premio, setPremio] = useState<number | null>(null);
 
   async function cargar() {
     if (!boletoId) return;
     const b = await obtenerBoleto(boletoId);
     if (!b) return;
     setBoleto(b);
-    setCiclo(await obtenerCiclo(b.ciclo_id));
+    const [c, p] = await Promise.all([obtenerCiclo(b.ciclo_id), obtenerPremioCiclo(b.ciclo_id)]);
+    setCiclo(c);
+    setPremio(p);
   }
 
   useEffect(() => {
@@ -91,6 +94,12 @@ function BoletoContenido() {
             <span className="text-sm text-ink-soft">Tu respuesta</span>
             <span className="text-sm font-medium">{boleto.respuesta === "si" ? "Sí" : "No"}</span>
           </Card>
+          {premio != null && (
+            <Card className="flex items-center justify-between">
+              <span className="text-sm text-ink-soft">Premio en juego</span>
+              <span className="font-display text-base font-bold text-mint">${premio.toLocaleString("es-MX")}</span>
+            </Card>
+          )}
           <Card className="flex items-center justify-between">
             <span className="text-sm text-ink-soft">Tu depósito</span>
             <span className="font-display text-sm tabular-nums">

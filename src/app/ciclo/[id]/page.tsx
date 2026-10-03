@@ -6,7 +6,7 @@ import { mensajeParaUsuario } from "@/lib/errores";
 import { supabase } from "@/lib/supabase";
 import { posthog } from "@/lib/posthog";
 import { obtenerRacha } from "@/lib/demo";
-import { obtenerCiclo, comprarBoleto, obtenerMiBoletoEnCiclo, calcularTicketPromedioHistorico, CicloConProducto } from "@/lib/boletos";
+import { obtenerCiclo, obtenerPremioCiclo, comprarBoleto, obtenerMiBoletoEnCiclo, calcularTicketPromedioHistorico, CicloConProducto } from "@/lib/boletos";
 import { Respuesta } from "@/types";
 import { Screen, BackChevron, RachaBadge, H1, PrimaryButton, ShieldIcon, CalendarIcon } from "@/components/ui";
 
@@ -28,6 +28,7 @@ export default function CicloPage() {
   const [comprando, setComprando] = useState(false);
   const [ciclo, setCiclo] = useState<CicloConProducto | null | undefined>(undefined);
   const [ticketPromedio, setTicketPromedio] = useState<number | null>(null);
+  const [premio, setPremio] = useState<number | null>(null);
   const [confirmaMontoMayor, setConfirmaMontoMayor] = useState(false);
   const [errorCompra, setErrorCompra] = useState<string | null>(null);
 
@@ -51,11 +52,13 @@ export default function CicloPage() {
         return;
       }
 
-      const [c, r, promedio] = await Promise.all([
+      const [c, r, promedio, p] = await Promise.all([
         obtenerCiclo(params.id as string),
         obtenerRacha(user.id),
         calcularTicketPromedioHistorico(user.id),
+        obtenerPremioCiclo(params.id as string),
       ]);
+      setPremio(p);
       setCiclo(c);
       setRacha(r);
       setTicketPromedio(promedio);
@@ -157,7 +160,10 @@ export default function CicloPage() {
         </div>
         <div className="flex items-center justify-between border-t border-line py-2">
           <span className="text-sm text-ink-soft">Si el nivel se llena</span>
-          <span className="text-sm font-medium">Se sortea un premio entre los aciertos</span>
+          <span className="text-right text-sm font-medium">
+            {premio != null && <span className="block font-display text-lg font-bold text-mint">${premio.toLocaleString("es-MX")}</span>}
+            Se sortea entre los aciertos
+          </span>
         </div>
         <div className="flex items-center justify-between border-t border-line py-2">
           <span className="text-sm text-ink-soft">Tu depósito</span>

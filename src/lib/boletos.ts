@@ -132,3 +132,67 @@ export async function calcularTicketPromedioHistorico(userId: string): Promise<n
   if (total === 0 || volumen === 0) return null; // sin historial -- no se puede comparar
   return volumen / total;
 }
+
+/**
+ * Premio que se pagaría hoy en este ciclo -- el mismo número que usa
+ * resolver_ciclo() (calcular_premio_ciclo en 0010): fórmula real si
+ * Finanzas ya llenó tasa_cetes_anual/alpha_em, si no productos.premio_estatico,
+ * más el piso del bono de bienvenida si está activo. Nunca se calcula en
+ * el navegador. null si falla, para que la pantalla no muestre un número
+ * inventado.
+ */
+export async function obtenerPremioCiclo(cicloId: string): Promise<number | null> {
+  const { data, error } = await supabase.rpc("calcular_premio_ciclo", { p_ciclo_id: cicloId });
+  if (error) return null;
+  const fila = (Array.isArray(data) ? data[0] : data) as { premio: number } | undefined;
+  return fila?.premio ?? null;
+}
+
+export interface MiBoleto extends Boleto {
+  ciclo_estado: Ciclo["estado"];
+  producto_nombre: string;
+  evento_nombre: string;
+}
+
+/**
+ * Todos los boletos del usuario, más recientes primero, con lo necesario
+ * para listarlos en Home sin una consulta por boleto.
+ */
+export async function obtenerMisBoletos(userId: string): Promise<MiBoleto[]> {
+  const { data: boletos, error } = await supabase
+    .from("boletos")
+    .select("*")
+    .eq("user_id", userId)
+    .order("creado_en", { ascending: false });
+  if (error) throw error;
+  const lista = (boletos as Boleto[]) ?? [];
+  if (lista.length === 0) return [];
+
+  const cicloIds = Array.from(new Set(lista.map((b) => b.ciclo_id)));
+  const { data: ciclos, error: e2 } = await supabase.from("ciclos").select("*").in("id", cicloIds);
+  if (e2) throw e2;
+  const eventoIds = Array.from(new Set(((ciclos as Ciclo[]) ?? []).map((c) => c.evento_id)));
+  const [{ data: productos }, { data: eventos }] = await Promise.all([
+    supabase.from("productos").select("clave, nombre"),
+    supabase.from("eventos").select("id, nombre").in("id", eventoIds),
+  ]);
+
+  const mapaCiclos = new Map(((ciclos as Ciclo[]) ?? []).map((c) => [c.id, c]));
+  const mapaProductos = new Map(((productos as { clave: string; nombre: string }[]) ?? []).map((p) => [p.clave, p.nombre]));
+  const mapaEventos = new Map(((eventos as { id: string; nombre: string }[]) ?? []).map((e) => [e.id, e.nombre]));
+
+  return lista.map((b) => {
+    const c = mapaCiclos.get(b.ciclo_id);
+    return {
+      ...b,
+      ciclo_estado: c?.estado ?? "llenando",
+      producto_nombre: (c && mapaProductos.get(c.producto_clave)) ?? "",
+      evento_nombre: (c && mapaEventos.get(c.evento_id)) ?? "",
+    };
+  });
+}
+
+/** Un boleto sigue "en juego" mientras su ciclo no se resuelve ni se cancela. */
+export function boletoEnJuego(b: MiBoleto): boolean {
+  return b.ciclo_estado === "llenando" || b.ciclo_estado === "lleno";
+}
