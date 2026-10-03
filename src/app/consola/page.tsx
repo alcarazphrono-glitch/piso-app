@@ -214,7 +214,7 @@ export default function ConsolaResumen() {
             </tbody>
           </table>
           <p className={`border-t border-neutral-100 px-4 py-2 text-xs ${tasa == null ? "text-amber-700" : "text-neutral-500"}`}>
-            Tasa CETES anual: {tasa == null ? "pendiente de Finanzas (los premios usan el valor estático de cada nivel)" : `${tasa}%`}
+            Tasa CETES anual: {tasa == null ? "sin dato (la base usa 10% mientras tanto). La Mesa la llena con el CETES 28 de Banxico en su siguiente corrida" : `${tasa}%`}
           </p>
         </div>
       </section>

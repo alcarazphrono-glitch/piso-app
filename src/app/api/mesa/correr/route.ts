@@ -82,8 +82,15 @@ async function correr(origen: "cron" | "manual", userId: string | null) {
   let tasa: TasaCetes = null;
   if (params?.tasa_cetes_anual != null) tasa = { valor: Number(params.tasa_cetes_anual), fuente: "parametros_pricing" };
   else {
+    // Una sola fuente: si la base no tiene tasa, la Mesa guarda ahí el CETES
+    // 28 de Banxico para que calcular_premio_ciclo() y la Mesa den el mismo
+    // premio. Solo llena el hueco (is null): nunca pisa un valor que puso
+    // Finanzas. El cambio queda en parametros_pricing_historial (trigger 0003).
     const vivo = await tasaCetesBanxico();
-    if (vivo != null) tasa = { valor: vivo, fuente: "CETES 28 Banxico (dato vivo)" };
+    if (vivo != null) {
+      const { error } = await db.from("parametros_pricing").update({ tasa_cetes_anual: vivo }).eq("id", true).is("tasa_cetes_anual", null);
+      if (!error) tasa = { valor: vivo, fuente: "parametros_pricing" };
+    }
   }
 
   const { data: corrida, error: e3 } = await db
