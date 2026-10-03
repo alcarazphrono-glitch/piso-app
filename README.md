@@ -654,3 +654,16 @@ páginas nuevas incluidas.
 
 ---
 *PISO — MVP del loop · Agosto-Septiembre 2026 · Confidencial*
+
+---
+
+## Actualización 3-oct-2026 — Infraestructura que pidió Legal (migración 0011)
+
+**`supabase/migrations/0011_legal_auditoria_sorteo_verificable.sql`** (correr después de 0010):
+
+- **Ledger inmutable:** `ledger_movimientos` rechaza UPDATE, DELETE y TRUNCATE, también desde el SQL Editor. Una corrección se registra como un movimiento contrario. Borrar un usuario ya no borra en cascada sus movimientos ni sus boletos; la baja se hace anonimizando.
+- **Auditoría:** tabla `auditoria`, append-only, que guarda quién, qué y cuándo, con el antes y el después de cada cambio en las tablas que se editan desde /admin (eventos, productos, parámetros, operadores, contenido, reserva, referidos, tratamientos).
+- **Consentimientos:** `registrar_consentimiento(documento, version)` guarda qué términos, aviso de privacidad o bases del sorteo aceptó cada usuario. La IP y el user agent se leen de los headers de la sesión. Todavía faltan los documentos y la UI que los muestre.
+- **Sorteo verificable (commit-reveal):** sustituye el `order by random()` de `resolver_ciclo()`. Cuando un ciclo se llena, se publica en `sorteos` el hash de una semilla secreta junto con la lista de participantes. Al resolver se revela la semilla, y cualquiera puede comprobar que el ganador salió justo con `verificar_sorteo(ciclo_id)`. La fórmula está documentada en la migración.
+
+Se probó contra Postgres 16 con PostgREST, como usuario normal y como operador. La auditoría registra los cambios de admin. Un usuario no puede comprometer un sorteo antes de tiempo (permiso denegado). La semilla no se puede leer antes de resolver. El ganador recalculado coincide con el pagado y el hash se valida. UPDATE y DELETE sobre el ledger se rechazan, y la integridad de capital da 0 violaciones. La cadena completa schema.sql → 0011 corre limpia sobre una base vacía.
