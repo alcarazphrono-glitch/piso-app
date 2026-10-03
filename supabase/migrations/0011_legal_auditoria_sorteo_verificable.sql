@@ -675,7 +675,10 @@ begin
       and (t.premio_hasta is null or v_bruto <= t.premio_hasta)
     order by t.orden asc
     limit 1;
-  v_carry := coalesce(v_carry, 12);
+  -- Sin tramo que aplique se cobra el carry más alto (30%), igual que
+  -- src/lib/mesa/payoff.ts. Con los tramos sembrados en la 0009 el último
+  -- tramo es abierto, así que esto solo pasa si alguien borra los tramos.
+  v_carry := coalesce(v_carry, 30);
 
   v_neto := round(v_bruto * (1 - v_carry / 100.0));
 
