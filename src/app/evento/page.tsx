@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { mensajeParaUsuario } from "@/lib/errores";
 import { supabase } from "@/lib/supabase";
 import { trackFunnel } from "@/lib/posthog";
@@ -29,8 +29,11 @@ import {
 // guardar la posición, así que se agrega aquí con el mismo lenguaje
 // visual, antes de la tarjeta de números.
 
-export default function EventoPage() {
-  const params = useParams<{ id: string }>();
+function EventoPageContenido() {
+  // ?id= en vez de /[id]: con rutas dinámicas la app no se puede exportar
+  // como sitio estático, que es lo que empaqueta Capacitor para iOS/Android.
+  const id = useSearchParams().get("id");
+  const params = { id: id ?? undefined };
   const router = useRouter();
   const [autenticado, setAutenticado] = useState(false);
   const [racha, setRacha] = useState(0);
@@ -220,5 +223,13 @@ export default function EventoPage() {
       </PrimaryButton>
       <p className="mt-3 text-center text-xs text-faint">Toma 15 segundos. Puedes retirar cuando quieras.</p>
     </Screen>
+  );
+}
+
+export default function EventoPage() {
+  return (
+    <Suspense fallback={null}>
+      <EventoPageContenido />
+    </Suspense>
   );
 }

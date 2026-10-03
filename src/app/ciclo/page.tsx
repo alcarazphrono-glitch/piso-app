@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { mensajeParaUsuario } from "@/lib/errores";
 import { supabase } from "@/lib/supabase";
 import { posthog } from "@/lib/posthog";
@@ -19,8 +19,11 @@ import { Screen, BackChevron, RachaBadge, H1, PrimaryButton, ShieldIcon, Calenda
 // acostumbra -- no es opcional, así que el botón de confirmar se queda
 // deshabilitado hasta que se marca la casilla.
 
-export default function CicloPage() {
-  const params = useParams<{ id: string }>();
+function CicloPageContenido() {
+  // ?id= en vez de /[id]: con rutas dinámicas la app no se puede exportar
+  // como sitio estático, que es lo que empaqueta Capacitor para iOS/Android.
+  const id = useSearchParams().get("id");
+  const params = { id: id ?? undefined };
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [racha, setRacha] = useState(0);
@@ -193,5 +196,13 @@ export default function CicloPage() {
       </PrimaryButton>
       <p className="mt-3 text-center text-xs text-faint">Puedes retirar tu depósito completo cuando se resuelva el nivel.</p>
     </Screen>
+  );
+}
+
+export default function CicloPage() {
+  return (
+    <Suspense fallback={null}>
+      <CicloPageContenido />
+    </Suspense>
   );
 }

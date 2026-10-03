@@ -72,7 +72,7 @@ export default function CiclosPage() {
           return (
             <Link
               key={c.id}
-              href={`/ciclo/${c.id}`}
+              href={`/ciclo?id=${c.id}`}
               className="block rounded-2xl border border-line bg-surface p-5"
             >
               <div className="flex items-center justify-between">

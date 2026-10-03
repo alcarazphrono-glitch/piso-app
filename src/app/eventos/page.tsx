@@ -54,7 +54,7 @@ export default function EventosPage() {
         {activos.map((e) => (
           <Link
             key={e.id}
-            href={`/evento/${e.id}`}
+            href={`/evento?id=${e.id}`}
             className="flex items-center justify-between rounded-2xl border border-line bg-surface px-4 py-4"
           >
             <div>
