@@ -616,8 +616,7 @@ alter table public.sorteos add column if not exists sorteo_entre text;
 -- ---------------------------------------------------------------------
 -- calcular_premio_ciclo: ÚNICO lugar donde se calcula el premio. Las
 -- pantallas, la exposición global y resolver_ciclo leen de aquí. Si
--- Finanzas cambia la fórmula (p. ej. premio = rendimiento del pool, sin
--- 1/p), se cambia solo el bloque "premio base".
+-- Finanzas cambia la fórmula, se cambia solo el bloque "premio base".
 -- ---------------------------------------------------------------------
 drop function if exists public.calcular_premio_ciclo(uuid);
 create function public.calcular_premio_ciclo(p_ciclo_id uuid)
@@ -630,12 +629,13 @@ declare
   v_ciclo public.ciclos;
   v_producto public.productos;
   v_tasa_cetes numeric;
-  v_probabilidad numeric;
+  v_alpha_em numeric;
   v_dias numeric;
   v_bruto numeric;
   v_carry numeric;
   v_neto numeric;
   v_bote numeric;
+  v_supuestos boolean;
 begin
   select * into v_ciclo from public.ciclos where id = p_ciclo_id;
   if v_ciclo.id is null then
@@ -643,29 +643,41 @@ begin
   end if;
 
   select * into v_producto from public.productos where clave = v_ciclo.producto_clave;
-  select probabilidad into v_probabilidad from public.eventos where id = v_ciclo.evento_id;
   select tasa_cetes_anual into v_tasa_cetes from public.parametros_pricing limit 1;
 
-  -- ---- premio base (igual que 0010) ----
-  if v_tasa_cetes is not null and v_producto.alpha_em is not null then
-    v_dias := extract(epoch from (v_ciclo.fecha_resolucion - v_ciclo.fecha_inicio)) / 86400.0;
-    v_bruto := v_producto.gente_requerida * v_producto.precio
-               * (exp((v_tasa_cetes / 100.0) * (v_dias / 365.0)) - 1)
-               * (1 - v_producto.alpha_em) / v_probabilidad;
+  -- ---- premio base ----
+  -- Decisión de Beto (3-oct-2026): premio = lo que el pool generó + bote.
+  -- Ya NO se divide entre la probabilidad del evento (1/p): con esa
+  -- fórmula, cada vez que el evento ocurría PISO ponía de su bolsa la
+  -- diferencia. Ahora el premio sale completo del rendimiento real del
+  -- capital del ciclo y PISO nunca pone dinero propio (salvo el bono de
+  -- bienvenida, que es un subsidio de adquisición explícito y topado).
+  --
+  --   rendimiento = N * precio * (e^(r * días/365) - 1)      (CETES, continuo)
+  --   bruto       = rendimiento * (1 - alpha_em)              (alpha_em = parte de PISO)
+  --   premio base = bruto * (1 - carry del tramo)
+  --
+  -- Mientras Finanzas no llene tasa_cetes_anual / productos.alpha_em, se
+  -- usan los acuerdos vigentes (r = 10%, alpha_em = 25%) y motor =
+  -- 'pool_supuestos', visible en /admin.
+  v_supuestos := v_tasa_cetes is null or v_producto.alpha_em is null;
+  v_tasa_cetes := coalesce(v_tasa_cetes, 10);
+  v_alpha_em := coalesce(v_producto.alpha_em, 0.25);
+  v_dias := extract(epoch from (v_ciclo.fecha_resolucion - v_ciclo.fecha_inicio)) / 86400.0;
 
-    select coalesce(t.carry_pct, 30) into v_carry
-      from public.producto_carry_tramos t
-      where t.producto_clave = v_producto.clave
-        and (t.premio_hasta is null or v_bruto <= t.premio_hasta)
-      order by t.orden asc
-      limit 1;
+  v_bruto := v_producto.gente_requerida * v_producto.precio
+             * (exp((v_tasa_cetes / 100.0) * (v_dias / 365.0)) - 1)
+             * (1 - v_alpha_em);
 
-    v_neto := round(v_bruto * (1 - v_carry / 100.0));
-  else
-    v_bruto := v_producto.premio_estatico;
-    v_carry := null;
-    v_neto := v_producto.premio_estatico;
-  end if;
+  select coalesce(t.carry_pct, 30) into v_carry
+    from public.producto_carry_tramos t
+    where t.producto_clave = v_producto.clave
+      and (t.premio_hasta is null or v_bruto <= t.premio_hasta)
+    order by t.orden asc
+    limit 1;
+  v_carry := coalesce(v_carry, 12);
+
+  v_neto := round(v_bruto * (1 - v_carry / 100.0));
 
   if v_ciclo.bono_bienvenida_activado and v_neto < 20000 then
     v_neto := 20000;
@@ -681,9 +693,9 @@ begin
 
   return query select
     v_neto + v_bote,
-    v_bruto,
+    round(v_bruto),
     v_carry,
-    case when v_tasa_cetes is not null and v_producto.alpha_em is not null then 'real' else 'estatico' end,
+    case when v_supuestos then 'pool_supuestos' else 'pool' end,
     v_neto,
     v_bote;
 end;

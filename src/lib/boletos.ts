@@ -141,7 +141,7 @@ export interface PremioCiclo {
 /**
  * Premio que se pagaría hoy en este ciclo -- el mismo número que usa
  * resolver_ciclo(). calcular_premio_ciclo (0011) es el ÚNICO lugar donde
- * se calcula: premio base (fórmula de Finanzas o premio_estatico, más el
+ * se calcula: premio base (rendimiento del pool menos alpha_em y carry, más el
  * piso del bono) + bote acumulado del nivel. Nunca se calcula en el
  * navegador. null si falla, para no mostrar un número inventado.
  */
