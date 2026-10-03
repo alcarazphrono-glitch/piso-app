@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { PayoffNivel } from "@/lib/mesa/payoff";
 
-// Mesa de derivados -- migración 0012. Flujo:
+// Mesa de derivados (consola financiera) -- migración 0012. Flujo:
 //   analista (agente) propone → mesa (humano) acepta → Riesgo aprueba con
 //   límite → se publica como evento + ciclo en la app.
 // Esta pantalla es el filtro humano: nada llega a Consumer sin pasar por
@@ -31,6 +31,8 @@ interface Propuesta {
   tesis: string;
   riesgos: string;
   payoff: { niveles?: PayoffNivel[] };
+  riesgo_legal: "bajo" | "medio" | "alto";
+  nota_legal: string;
   producto_sugerido: string | null;
   estado: Estado;
   nota_revision: string | null;
@@ -292,7 +294,13 @@ export default function MesaPage() {
                 <AccionPublicar
                   p={p}
                   productos={productos}
-                  onPublicar={(nivel) => rpc("mesa_publicar", { p_propuesta_id: p.id, p_producto_clave: nivel }, "Publicada: el evento y su ciclo ya están en la app.")}
+                  onPublicar={(nivel, aceptoLegal) =>
+                    rpc(
+                      "mesa_publicar",
+                      { p_propuesta_id: p.id, p_producto_clave: nivel, p_acepto_riesgo_legal: aceptoLegal },
+                      "Publicada: el evento y su ciclo ya están en la app."
+                    )
+                  }
                 />
               )}
               {(p.estado === "publicada" || p.estado === "rechazada") && <Resolucion p={p} />}
@@ -340,7 +348,16 @@ function TarjetaPropuesta({ p, analista, children }: { p: Propuesta; analista: s
           <span className="rounded bg-neutral-100 px-1.5 py-0.5 font-medium text-neutral-700">{analista}</span>
           <span>{p.fecha_texto}</span>
           <span>· {p.fuente_resolucion}</span>
+          {p.riesgo_legal !== "bajo" && (
+            <span
+              title={p.nota_legal}
+              className={`rounded px-1.5 py-0.5 font-medium ${p.riesgo_legal === "alto" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}
+            >
+              Riesgo legal {p.riesgo_legal}
+            </span>
+          )}
         </div>
+        {p.riesgo_legal === "alto" && <p className="mb-1 text-xs text-red-700">{p.nota_legal}</p>}
         <p className="font-medium">{p.pregunta}</p>
         {p.descripcion_usuario && p.descripcion_usuario !== p.pregunta && (
           <p className="mt-0.5 text-xs text-neutral-500">Usuario verá: “{p.descripcion_usuario}”</p>
@@ -482,13 +499,23 @@ function AccionRiesgo({
   );
 }
 
-function AccionPublicar({ p, productos, onPublicar }: { p: Propuesta; productos: Producto[]; onPublicar: (nivel: string) => void }) {
+function AccionPublicar({
+  p,
+  productos,
+  onPublicar,
+}: {
+  p: Propuesta;
+  productos: Producto[];
+  onPublicar: (nivel: string, aceptoLegal: boolean) => void;
+}) {
   // Misma regla que mesa_publicar(): el evento se resuelve después de que
   // cierra la venta del nivel y a más tardar 7 días después.
   const dias = (new Date(p.fecha_resolucion).getTime() - Date.now()) / DIA;
   const validos = productos.filter((n) => dias >= n.dias_resolucion && dias - n.dias_resolucion <= 7);
   const inicial = validos.find((n) => n.clave === p.producto_sugerido)?.clave ?? validos[0]?.clave ?? "";
   const [nivel, setNivel] = useState(inicial);
+  const [aceptoLegal, setAceptoLegal] = useState(false);
+  const bloqueadoLegal = p.riesgo_legal === "alto" && !aceptoLegal;
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <span className="text-neutral-500">Límite de Riesgo: {mxn(p.limite_exposicion_mxn)}</span>
@@ -505,7 +532,17 @@ function AccionPublicar({ p, productos, onPublicar }: { p: Propuesta; productos:
               </option>
             ))}
           </select>
-          <button onClick={() => onPublicar(nivel)} className="rounded-md bg-emerald-700 px-3 py-1.5 font-medium text-white">
+          {p.riesgo_legal === "alto" && (
+            <label className="flex items-center gap-1.5 text-red-700">
+              <input type="checkbox" checked={aceptoLegal} onChange={(e) => setAceptoLegal(e.target.checked)} />
+              Acepto el riesgo legal
+            </label>
+          )}
+          <button
+            onClick={() => onPublicar(nivel, aceptoLegal)}
+            disabled={bloqueadoLegal}
+            className="rounded-md bg-emerald-700 px-3 py-1.5 font-medium text-white disabled:opacity-40"
+          >
             Publicar en la app
           </button>
         </>
@@ -540,7 +577,7 @@ function PanelAnalistas({
   return (
     <div className="flex flex-col gap-3">
       {analistas.map((a) => {
-        const ultimo = corrida?.resultado?.find((r) => r.analista === a.clave);
+        const ultimos = corrida?.resultado?.filter((r) => r.analista === a.clave) ?? [];
         return (
           <div key={a.clave} className="rounded-lg border border-neutral-200 bg-white p-4 text-sm">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
@@ -566,11 +603,11 @@ function PanelAnalistas({
                 />
               </div>
             )}
-            {ultimo && (
-              <p className={`mt-2 text-xs ${ultimo.estado === "error" ? "text-red-600" : ultimo.estado === "sin_datos" ? "text-amber-700" : "text-neutral-500"}`}>
-                Última corrida: {ultimo.estado.replace("_", " ")} · {ultimo.detalle}
+            {ultimos.map((u, i) => (
+              <p key={i} className={`mt-1 text-xs ${u.estado === "error" ? "text-red-600" : u.estado === "sin_datos" ? "text-amber-700" : "text-neutral-500"}`}>
+                Última corrida: {u.estado.replace("_", " ")} · {u.detalle}
               </p>
-            )}
+            ))}
           </div>
         );
       })}

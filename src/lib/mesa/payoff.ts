@@ -3,6 +3,11 @@
 // payoff ANTES de publicar. La fuente de verdad al liquidar sigue siendo
 // la función de Postgres.
 //
+// PUNTO ÚNICO de la fórmula en TS: la mesa, Riesgo y la consola leen de
+// aquí. En discusión con Finanzas cambiarla a premio = rendimiento del pool
+// + bote (sin 1/p). Si se decide, se cambia aquí y en calcular_premio_ciclo
+// (Postgres), nada más.
+//
 // Lectura como derivado: cada lado (sí/no) es un digital que paga
 // `premio_neto` si ocurre. Su valor justo es p × premio. Lo que lo fondea es
 // el rendimiento del pool menos alpha_em. Si ocurre, la diferencia entre el

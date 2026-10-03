@@ -70,7 +70,11 @@ insert into public.mesa_analistas (clave, nombre, mercado, modelo_estocastico, d
   ('fx', 'Analista de Tipo de Cambio', 'USD/MXN FIX',
    'Movimiento browniano geométrico',
    'Rendimientos log diarios de 250 días; P(S_T > K) = Φ(d2) sin drift. Intervalo por incertidumbre de σ (χ²). Datos: Banxico SIE SF43718.',
-   '{}'::jsonb)
+   '{}'::jsonb),
+  ('deportes', 'Analista de Deportes', 'Liga MX (momios de mercado)',
+   'Probabilidad implícita de mercado',
+   'Momios 1X2 de varias casas, sin margen (normalizados a 100%). p = promedio entre casas; intervalo = mínimo y máximo entre casas. Datos: The Odds API. Riesgo legal ALTO: deportes cae cerca de apuestas (SEGOB).',
+   '{"ligas": ["soccer_mexico_ligamx"], "max_propuestas": 2}'::jsonb)
 on conflict (clave) do nothing;
 
 alter table public.mesa_analistas enable row level security;
@@ -128,6 +132,11 @@ create table if not exists public.mesa_propuestas (
   prob_alta numeric check (prob_alta is null or (prob_alta >= 0 and prob_alta <= 1)),
   parametros jsonb not null default '{}'::jsonb,
   datos jsonb not null default '{}'::jsonb, -- snapshot de lo que se leyó (últimos valores, n, url)
+
+  -- Riesgo legal que declara el analista. 'alto' exige que el operador lo
+  -- acepte explícitamente al publicar (mesa_publicar).
+  riesgo_legal text not null default 'bajo' check (riesgo_legal in ('bajo', 'medio', 'alto')),
+  nota_legal text not null default '',
 
   -- Lectura del analista (redacta Claude sobre los números ya calculados)
   tesis text not null default '',
@@ -319,8 +328,12 @@ $$;
 -- venta del ciclo (now + días del nivel), para que nadie compre un boleto
 -- sabiendo ya el resultado, y a más tardar 7 días después, para no
 -- retener el capital más de lo prometido.
+--
+-- Riesgo legal 'alto' (p. ej. deportes, cerca de apuestas para SEGOB): no
+-- se publica sin p_acepto_riesgo_legal = true, y la aceptación queda en
+-- bitácora con nombre.
 -- ---------------------------------------------------------------------
-create or replace function public.mesa_publicar(p_propuesta_id uuid, p_producto_clave text)
+create or replace function public.mesa_publicar(p_propuesta_id uuid, p_producto_clave text, p_acepto_riesgo_legal boolean default false)
 returns public.mesa_propuestas
 language plpgsql
 security definer
@@ -343,6 +356,10 @@ begin
   end if;
   if v_prop.estado <> 'aprobada_riesgo' then
     raise exception 'solo se publica lo aprobado por Riesgo (estado: %)', v_prop.estado;
+  end if;
+
+  if v_prop.riesgo_legal = 'alto' and not coalesce(p_acepto_riesgo_legal, false) then
+    raise exception 'riesgo legal alto: hay que aceptarlo explícitamente para publicar (%)', v_prop.nota_legal;
   end if;
 
   select dias_resolucion into v_dias from public.productos where clave = p_producto_clave and activo;
@@ -390,7 +407,9 @@ begin
   returning * into v_prop;
 
   insert into public.mesa_bitacora (propuesta_id, accion, actor, nota)
-  values (p_propuesta_id, 'publicada', auth.uid(), concat('evento ', v_evento_id, ', nivel ', p_producto_clave));
+  values (p_propuesta_id, 'publicada', auth.uid(),
+          concat('evento ', v_evento_id, ', nivel ', p_producto_clave,
+                 case when v_prop.riesgo_legal = 'alto' then ' -- riesgo legal ALTO aceptado' else '' end));
 
   return v_prop;
 end;
@@ -398,7 +417,7 @@ $$;
 
 revoke execute on function public.mesa_decidir_analista(uuid, boolean, text) from public, anon;
 revoke execute on function public.mesa_decidir_riesgo(uuid, boolean, numeric, text) from public, anon;
-revoke execute on function public.mesa_publicar(uuid, text) from public, anon;
+revoke execute on function public.mesa_publicar(uuid, text, boolean) from public, anon;
 grant execute on function public.mesa_decidir_analista(uuid, boolean, text) to authenticated;
 grant execute on function public.mesa_decidir_riesgo(uuid, boolean, numeric, text) to authenticated;
-grant execute on function public.mesa_publicar(uuid, text) to authenticated;
+grant execute on function public.mesa_publicar(uuid, text, boolean) to authenticated;

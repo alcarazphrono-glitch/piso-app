@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { ANALISTAS, AnalistaRow, tasaCetesBanxico } from "@/lib/mesa/analistas";
+import { PLUGINS, AnalistaRow, Borrador, PluginAnalista, tasaCetesBanxico } from "@/lib/mesa/analistas";
 import { SinDatos } from "@/lib/mesa/fuentes";
 import { redactar } from "@/lib/mesa/narrativa";
 import { calcularPayoff, ProductoMesa, TramoCarry } from "@/lib/mesa/payoff";
@@ -19,6 +19,8 @@ interface ResultadoAnalista {
   estado: "propuesta" | "duplicada" | "sin_datos" | "error";
   detalle: string;
 }
+
+type Db = ReturnType<typeof supabaseAdmin>;
 
 export async function GET(req: NextRequest) {
   const secreto = process.env.CRON_SECRET;
@@ -85,64 +87,22 @@ async function correr(origen: "cron" | "manual", userId: string | null) {
     .single();
   if (e3) return NextResponse.json({ error: e3.message }, { status: 500 });
 
-  const resultados: ResultadoAnalista[] = await Promise.all(
-    ((analistas ?? []) as AnalistaRow[]).map(async (a): Promise<ResultadoAnalista> => {
-      const fn = ANALISTAS[a.clave];
-      if (!fn) return { analista: a.clave, estado: "error", detalle: "analista sin implementación" };
-      try {
-        const b = await fn(a, prods);
-
-        const { data: viva } = await db
-          .from("mesa_propuestas")
-          .select("id")
-          .eq("analista_clave", a.clave)
-          .eq("pregunta", b.pregunta)
-          .in("estado", ["pendiente", "aceptada", "aprobada_riesgo"])
-          .maybeSingle();
-        if (viva) return { analista: a.clave, estado: "duplicada", detalle: b.pregunta };
-
-        const narrativa = await redactar(a.nombre, b);
-        const niveles = prods.map((p) => calcularPayoff(b.base.probabilidad, p, tramosN, tasa));
-
-        const { data: prop, error } = await db
-          .from("mesa_propuestas")
-          .insert({
-            analista_clave: a.clave,
-            corrida_id: corrida.id,
-            titulo: b.titulo,
-            pregunta: b.pregunta,
-            descripcion_usuario: narrativa.descripcion_usuario,
-            categoria: b.categoria,
-            fuente_resolucion: b.fuente_resolucion,
-            fecha_resolucion: b.fecha_resolucion.toISOString(),
-            fecha_texto: b.fecha_texto,
-            modelo_estocastico: b.base.modelo,
-            probabilidad: b.base.probabilidad,
-            prob_baja: b.base.prob_baja,
-            prob_alta: b.base.prob_alta,
-            parametros: b.base.parametros,
-            datos: { ...b.datos, narrativa: narrativa.motor },
-            tesis: narrativa.tesis,
-            riesgos: narrativa.riesgos,
-            payoff: { niveles, tasa_cetes: tasa },
-            producto_sugerido: b.producto_sugerido,
-          })
-          .select("id")
-          .single();
-        if (error) return { analista: a.clave, estado: "error", detalle: error.message };
-
-        await db.from("mesa_bitacora").insert({
-          propuesta_id: prop.id,
-          accion: "agente_propone",
-          nota: `${a.nombre}: p=${b.base.probabilidad.toFixed(2)} (${b.base.modelo})`,
-        });
-        return { analista: a.clave, estado: "propuesta", detalle: b.pregunta };
-      } catch (e) {
-        if (e instanceof SinDatos) return { analista: a.clave, estado: "sin_datos", detalle: e.message };
-        return { analista: a.clave, estado: "error", detalle: (e as Error).message };
-      }
-    })
-  );
+  const ctx = { db, corridaId: corrida.id as string, prods, tramosN, tasa };
+  const resultados: ResultadoAnalista[] = (
+    await Promise.all(
+      ((analistas ?? []) as AnalistaRow[]).map(async (a): Promise<ResultadoAnalista[]> => {
+        const plugin = PLUGINS[a.clave];
+        if (!plugin) return [{ analista: a.clave, estado: "error", detalle: "analista sin plugin en src/lib/mesa/analistas" }];
+        try {
+          const borradores = await plugin.proponer(a, prods);
+          return await Promise.all(borradores.map((b) => guardar(ctx, a, plugin, b)));
+        } catch (e) {
+          if (e instanceof SinDatos) return [{ analista: a.clave, estado: "sin_datos", detalle: e.message }];
+          return [{ analista: a.clave, estado: "error", detalle: (e as Error).message }];
+        }
+      })
+    )
+  ).flat();
 
   const creadas = resultados.filter((r) => r.estado === "propuesta").length;
   await db
@@ -151,4 +111,60 @@ async function correr(origen: "cron" | "manual", userId: string | null) {
     .eq("id", corrida.id);
 
   return NextResponse.json({ corrida: corrida.id, propuestas_creadas: creadas, resultados });
+}
+
+async function guardar(
+  ctx: { db: Db; corridaId: string; prods: ProductoMesa[]; tramosN: TramoCarry[]; tasa: { valor: number; fuente: string } | null },
+  a: AnalistaRow,
+  plugin: PluginAnalista,
+  b: Borrador
+): Promise<ResultadoAnalista> {
+  const { db } = ctx;
+  const { data: viva } = await db
+    .from("mesa_propuestas")
+    .select("id")
+    .eq("analista_clave", a.clave)
+    .eq("pregunta", b.pregunta)
+    .in("estado", ["pendiente", "aceptada", "aprobada_riesgo"])
+    .maybeSingle();
+  if (viva) return { analista: a.clave, estado: "duplicada", detalle: b.pregunta };
+
+  const narrativa = await redactar(a.nombre, b);
+  const niveles = ctx.prods.map((p) => calcularPayoff(b.base.probabilidad, p, ctx.tramosN, ctx.tasa));
+
+  const { data: prop, error } = await db
+    .from("mesa_propuestas")
+    .insert({
+      analista_clave: a.clave,
+      corrida_id: ctx.corridaId,
+      titulo: b.titulo,
+      pregunta: b.pregunta,
+      descripcion_usuario: narrativa.descripcion_usuario,
+      categoria: b.categoria,
+      fuente_resolucion: b.fuente_resolucion,
+      fecha_resolucion: b.fecha_resolucion.toISOString(),
+      fecha_texto: b.fecha_texto,
+      modelo_estocastico: b.base.modelo,
+      probabilidad: b.base.probabilidad,
+      prob_baja: b.base.prob_baja,
+      prob_alta: b.base.prob_alta,
+      parametros: b.base.parametros,
+      datos: { ...b.datos, narrativa: narrativa.motor },
+      riesgo_legal: plugin.riesgoLegal.nivel,
+      nota_legal: plugin.riesgoLegal.nota,
+      tesis: narrativa.tesis,
+      riesgos: narrativa.riesgos,
+      payoff: { niveles, tasa_cetes: ctx.tasa },
+      producto_sugerido: b.producto_sugerido,
+    })
+    .select("id")
+    .single();
+  if (error) return { analista: a.clave, estado: "error", detalle: error.message };
+
+  await db.from("mesa_bitacora").insert({
+    propuesta_id: prop.id,
+    accion: "agente_propone",
+    nota: `${a.nombre}: p=${b.base.probabilidad.toFixed(2)} (${b.base.modelo})`,
+  });
+  return { analista: a.clave, estado: "propuesta", detalle: b.pregunta };
 }

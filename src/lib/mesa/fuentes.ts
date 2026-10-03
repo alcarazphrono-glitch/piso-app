@@ -68,3 +68,49 @@ export async function inpcMensual(): Promise<Punto[]> {
   }
   throw new Error(ultimoError);
 }
+
+// Momios de mercado (The Odds API, plan gratis 500 llamadas/mes):
+// https://the-odds-api.com -- ODDS_API_KEY. Es el "derivado de referencia"
+// para eventos deportivos: el mercado ya pone precio a la probabilidad.
+export const URL_ODDS = "https://api.the-odds-api.com/v4/sports";
+
+export interface PartidoMomios {
+  id: string;
+  liga: string;
+  inicio: Date;
+  local: string;
+  visitante: string;
+  // Probabilidad implícita sin margen de que gane el local, una por casa.
+  pLocalPorCasa: { casa: string; p: number }[];
+}
+
+export async function momiosLiga(liga: string): Promise<PartidoMomios[]> {
+  const key = process.env.ODDS_API_KEY;
+  if (!key) throw new SinDatos("falta ODDS_API_KEY");
+  const res = await fetch(`${URL_ODDS}/${liga}/odds?apiKey=${key}&regions=us,eu,uk&markets=h2h&oddsFormat=decimal`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`The Odds API ${liga}: HTTP ${res.status}`);
+  const juegos: {
+    id: string;
+    commence_time: string;
+    home_team: string;
+    away_team: string;
+    bookmakers: { title: string; markets: { key: string; outcomes: { name: string; price: number }[] }[] }[];
+  }[] = await res.json();
+  return juegos.map((j) => ({
+    id: j.id,
+    liga,
+    inicio: new Date(j.commence_time),
+    local: j.home_team,
+    visitante: j.away_team,
+    pLocalPorCasa: j.bookmakers
+      .map((b) => {
+        const h2h = b.markets.find((m) => m.key === "h2h");
+        if (!h2h) return null;
+        const implicitas = h2h.outcomes.map((o) => ({ name: o.name, q: 1 / o.price }));
+        const total = implicitas.reduce((acc, o) => acc + o.q, 0);
+        const local = implicitas.find((o) => o.name === j.home_team);
+        return local && total > 0 ? { casa: b.title, p: local.q / total } : null;
+      })
+      .filter((x): x is { casa: string; p: number } => x !== null),
+  }));
+}

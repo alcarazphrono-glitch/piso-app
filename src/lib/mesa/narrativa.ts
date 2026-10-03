@@ -4,7 +4,7 @@
 // llamada falla, cae a un texto plantilla con los mismos números.
 
 import Anthropic from "@anthropic-ai/sdk";
-import type { Borrador } from "./analistas";
+import type { Borrador } from "./analistas/tipos";
 
 export interface Narrativa {
   tesis: string;

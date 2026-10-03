@@ -89,3 +89,17 @@ export function browniano(spot: number, rendimientosLog: number[], strike: numbe
     },
   };
 }
+
+// Deportes: probabilidad implícita de mercado. Cada casa ya viene sin
+// margen (normalizada); p = promedio, intervalo = mínimo y máximo entre
+// casas (cuánto discrepa el mercado).
+export function implicitaMercado(ps: number[]): BaseEstocastica {
+  const m = media(ps);
+  return {
+    modelo: "Probabilidad implícita de mercado",
+    probabilidad: recorta(m),
+    prob_baja: recorta(Math.min(...ps)),
+    prob_alta: recorta(Math.max(...ps)),
+    parametros: { casas: ps.length, dispersion: +(Math.max(...ps) - Math.min(...ps)).toFixed(3) },
+  };
+}
