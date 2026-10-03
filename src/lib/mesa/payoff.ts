@@ -1,17 +1,18 @@
-// Mesa de derivados -- estructura de payoff por nivel. Espejo en TS de
-// calcular_premio_ciclo() (migración 0010) para que el humano vea el
-// payoff ANTES de publicar. La fuente de verdad al liquidar sigue siendo
-// la función de Postgres.
+// Mesa de derivados -- estructura de payoff por nivel.
 //
 // PUNTO ÚNICO de la fórmula en TS: la mesa, Riesgo y la consola leen de
-// aquí. En discusión con Finanzas cambiarla a premio = rendimiento del pool
-// + bote (sin 1/p). Si se decide, se cambia aquí y en calcular_premio_ciclo
-// (Postgres), nada más.
+// aquí. Decisión de Beto (2026-10-03): premio = lo que generó el pool + el
+// bote acumulado, SIN dividir entre la probabilidad. PISO nunca pone de su
+// bolsa: el premio sale del rendimiento real, y PISO gana alpha_em sobre
+// ese rendimiento más el carry sobre el premio base.
 //
-// Lectura como derivado: cada lado (sí/no) es un digital que paga
-// `premio_neto` si ocurre. Su valor justo es p × premio. Lo que lo fondea es
-// el rendimiento del pool menos alpha_em. Si ocurre, la diferencia entre el
-// premio y ese fondeo la pone la reserva: eso es el déficit en el peor caso.
+//   rendimiento = N × boleto × (e^(tasa × días/365) − 1)
+//   premio_base = rendimiento × (1 − alpha_em) × (1 − carry)
+//   premio      = premio_base + bote
+//   ingreso PISO = rendimiento × alpha_em + carry
+//
+// En Postgres la fórmula vive en calcular_premio_ciclo() (migración 0011 del
+// hilo El Reto, que también suma el bote). Las dos deben decir lo mismo.
 
 export interface ProductoMesa {
   clave: string;
@@ -36,13 +37,16 @@ export interface PayoffNivel {
   capital_pool: number;
   rendimiento_pool: number;
   margen_alpha: number;
-  premio_bruto: number;
   carry_pct: number;
-  premio_neto: number;
-  valor_esperado: number;
-  fondeo_disponible: number;
-  peor_caso: number;
-  deficit_peor_caso: number;
+  carry_mxn: number;
+  premio_base: number;
+  bote: number;
+  premio: number;
+  ingreso_piso: number;
+  ingreso_por_usuario: number;
+  // Lo que PISO pondría de su bolsa si el evento ocurre. Con esta fórmula
+  // siempre es 0; se deja explícito para que Riesgo lo vea.
+  aporte_piso: number;
   supuestos: string[];
 }
 
@@ -51,11 +55,13 @@ export interface PayoffNivel {
 const TASA_SUPUESTA = 10;
 const ALPHA_SUPUESTO = 0.25;
 
+export type TasaCetes = { valor: number; fuente: string } | null;
+
 export function calcularPayoff(
-  p: number,
   producto: ProductoMesa,
   tramos: TramoCarry[],
-  tasaCetes: { valor: number; fuente: string } | null
+  tasaCetes: TasaCetes,
+  bote = 0
 ): PayoffNivel {
   const supuestos: string[] = [];
   const tasa = tasaCetes?.valor ?? TASA_SUPUESTA;
@@ -66,15 +72,16 @@ export function calcularPayoff(
 
   const capital = producto.gente_requerida * producto.precio;
   const rendimiento = capital * (Math.exp((tasa / 100) * (producto.dias_resolucion / 365)) - 1);
-  const bruto = (rendimiento * (1 - alpha)) / p;
+  const despuesAlpha = rendimiento * (1 - alpha);
 
   const tramo = tramos
     .filter((t) => t.producto_clave === producto.clave)
     .sort((a, b) => a.orden - b.orden)
-    .find((t) => t.premio_hasta == null || bruto <= t.premio_hasta);
+    .find((t) => t.premio_hasta == null || despuesAlpha <= t.premio_hasta);
   const carry = tramo?.carry_pct ?? 30;
-  const neto = Math.round(bruto * (1 - carry / 100));
-  const fondeo = rendimiento * (1 - alpha);
+  const premioBase = Math.round(despuesAlpha * (1 - carry / 100));
+  const carryMxn = despuesAlpha - premioBase;
+  const ingreso = rendimiento * alpha + carryMxn;
 
   return {
     nivel: producto.clave,
@@ -83,13 +90,41 @@ export function calcularPayoff(
     capital_pool: Math.round(capital),
     rendimiento_pool: Math.round(rendimiento),
     margen_alpha: Math.round(rendimiento * alpha),
-    premio_bruto: Math.round(bruto),
     carry_pct: carry,
-    premio_neto: neto,
-    valor_esperado: Math.round(p * neto),
-    fondeo_disponible: Math.round(fondeo),
-    peor_caso: neto,
-    deficit_peor_caso: Math.max(0, Math.round(neto - fondeo)),
+    carry_mxn: Math.round(carryMxn),
+    premio_base: premioBase,
+    bote: Math.round(bote),
+    premio: premioBase + Math.round(bote),
+    ingreso_piso: Math.round(ingreso),
+    ingreso_por_usuario: +(ingreso / producto.gente_requerida).toFixed(2),
+    aporte_piso: 0,
     supuestos,
+  };
+}
+
+// Cuánto gana PISO por usuario: por boleto y al año si el usuario mantiene
+// su dinero en el nivel todo el año (un ciclo tras otro).
+export interface EconomiaUsuario {
+  nivel: string;
+  nombre: string;
+  boleto: number;
+  por_ciclo: number;
+  ciclos_por_ano: number;
+  por_ano: number;
+  pct_del_deposito_anual: number;
+}
+
+export function economiaPorUsuario(producto: ProductoMesa, tramos: TramoCarry[], tasaCetes: TasaCetes): EconomiaUsuario {
+  const p = calcularPayoff(producto, tramos, tasaCetes);
+  const ciclos = 365 / producto.dias_resolucion;
+  const porAno = p.ingreso_por_usuario * ciclos;
+  return {
+    nivel: producto.clave,
+    nombre: producto.nombre,
+    boleto: producto.precio,
+    por_ciclo: p.ingreso_por_usuario,
+    ciclos_por_ano: +ciclos.toFixed(1),
+    por_ano: Math.round(porAno),
+    pct_del_deposito_anual: +((porAno / producto.precio) * 100).toFixed(2),
   };
 }

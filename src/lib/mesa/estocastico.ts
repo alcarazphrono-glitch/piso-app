@@ -103,3 +103,37 @@ export function implicitaMercado(ps: number[]): BaseEstocastica {
     parametros: { casas: ps.length, dispersion: +(Math.max(...ps) - Math.min(...ps)).toFixed(3) },
   };
 }
+
+// Cripto: GBM con volatilidad IMPLÍCITA del mercado de opciones (lo que el
+// mercado paga hoy por protegerse), 365 días/año. El intervalo es el rango
+// entre usar σ implícita y σ histórica.
+export function brownianoImplicito(spot: number, strike: number, dias: number, volImplicita: number, volHistorica: number | null): BaseEstocastica {
+  const T = dias / 365;
+  const p = (s: number) => normCdf((Math.log(spot / strike) - (s * s * T) / 2) / (s * Math.sqrt(T)));
+  const pI = p(volImplicita);
+  const pH = volHistorica ? p(volHistorica) : pI;
+  return {
+    modelo: "Movimiento browniano geométrico con volatilidad implícita",
+    probabilidad: recorta(pI),
+    prob_baja: recorta(Math.min(pI, pH)),
+    prob_alta: recorta(Math.max(pI, pH)),
+    parametros: {
+      spot: +spot.toFixed(2),
+      strike,
+      vol_implicita: +volImplicita.toFixed(4),
+      vol_historica: volHistorica == null ? "n/d" : +volHistorica.toFixed(4),
+      dias,
+    },
+  };
+}
+
+// Mercados de predicción: p = precio del Sí; intervalo = bid/ask.
+export function precioPrediccion(pSi: number, bid: number | null, ask: number | null): BaseEstocastica {
+  return {
+    modelo: "Precio de mercado de predicción",
+    probabilidad: recorta(pSi),
+    prob_baja: recorta(bid ?? pSi),
+    prob_alta: recorta(ask ?? pSi),
+    parametros: { precio_si: pSi, bid: bid ?? "n/d", ask: ask ?? "n/d" },
+  };
+}

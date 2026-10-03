@@ -71,10 +71,18 @@ insert into public.mesa_analistas (clave, nombre, mercado, modelo_estocastico, d
    'Movimiento browniano geométrico',
    'Rendimientos log diarios de 250 días; P(S_T > K) = Φ(d2) sin drift. Intervalo por incertidumbre de σ (χ²). Datos: Banxico SIE SF43718.',
    '{}'::jsonb),
-  ('deportes', 'Analista de Deportes', 'Liga MX (momios de mercado)',
+  ('deportes', 'Analista de Deportes', 'Futbol y ligas globales (momios de mercado)',
    'Probabilidad implícita de mercado',
-   'Momios 1X2 de varias casas, sin margen (normalizados a 100%). p = promedio entre casas; intervalo = mínimo y máximo entre casas. Datos: The Odds API. Riesgo legal ALTO: deportes cae cerca de apuestas (SEGOB).',
-   '{"ligas": ["soccer_mexico_ligamx"], "max_propuestas": 2}'::jsonb)
+   'Momios de varias casas, sin margen (normalizados a 100%). p = promedio entre casas; intervalo = mínimo y máximo entre casas. Datos: The Odds API. Riesgo legal ALTO: deportes cae cerca de apuestas (SEGOB).',
+   '{"ligas": ["soccer_mexico_ligamx", "soccer_uefa_champs_league", "soccer_epl", "basketball_nba", "americanfootball_nfl"], "max_propuestas": 3}'::jsonb),
+  ('cripto', 'Analista de Cripto', 'Bitcoin y Ether (opciones Deribit)',
+   'Movimiento browniano geométrico con volatilidad implícita',
+   'Precio índice y volatilidad implícita (DVOL) del mercado de opciones de Deribit. P(S_T > K) = Φ(d2) con σ implícita; intervalo con σ histórica vs implícita. Sin llave.',
+   '{"monedas": ["BTC", "ETH"]}'::jsonb),
+  ('prediccion', 'Analista de Tendencias', 'Mercados de predicción (Polymarket)',
+   'Precio de mercado de predicción',
+   'Eventos de todo tipo (cultura, tecnología, economía global, deportes) con contrato Sí/No líquido. p = precio del Sí; intervalo = bid/ask. Solo mercados con liquidez mínima. Sin llave.',
+   '{"liquidez_min_usd": 50000, "max_propuestas": 3, "excluir": ["politics", "elections"]}'::jsonb)
 on conflict (clave) do nothing;
 
 alter table public.mesa_analistas enable row level security;
@@ -141,8 +149,14 @@ create table if not exists public.mesa_propuestas (
   -- Lectura del analista (redacta Claude sobre los números ya calculados)
   tesis text not null default '',
   riesgos text not null default '',
+  gancho_redes text not null default '', -- una línea para compartir en redes
 
-  -- Payoff por nivel (fórmula de Finanzas de 0010) + nivel sugerido
+  -- Id del contrato/partido en la fuente (Polymarket, Odds API...), para
+  -- no proponer dos veces lo mismo aunque cambie la redacción.
+  ref_externa text,
+
+  -- Payoff por nivel (premio = rendimiento del pool + bote, ver
+  -- src/lib/mesa/payoff.ts) + nivel sugerido
   payoff jsonb not null default '{}'::jsonb,
   producto_sugerido text references public.productos(clave),
 
@@ -169,6 +183,10 @@ create table if not exists public.mesa_propuestas (
 create unique index if not exists mesa_propuestas_una_viva
   on public.mesa_propuestas (analista_clave, pregunta)
   where estado in ('pendiente', 'aceptada', 'aprobada_riesgo');
+
+create unique index if not exists mesa_propuestas_una_viva_ref
+  on public.mesa_propuestas (analista_clave, ref_externa)
+  where ref_externa is not null and estado in ('pendiente', 'aceptada', 'aprobada_riesgo');
 
 create index if not exists mesa_propuestas_estado on public.mesa_propuestas (estado, creado_en desc);
 

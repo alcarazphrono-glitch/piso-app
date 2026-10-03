@@ -24,6 +24,13 @@ export interface Borrador {
   base: BaseEstocastica;
   datos: Record<string, unknown>;
   producto_sugerido: string | null;
+  // Id del contrato/partido en la fuente, para no repetir propuestas.
+  ref_externa?: string;
+  // Si el evento viene de una fuente en inglés, Claude redacta pregunta y
+  // título en español (la pregunta original queda en datos).
+  traducir?: boolean;
+  // Sobrescribe el riesgo legal del plugin para este evento en particular.
+  riesgo_legal?: { nivel: NivelRiesgoLegal; nota: string };
 }
 
 export interface PluginAnalista {

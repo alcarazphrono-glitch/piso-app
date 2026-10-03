@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { economiaPorUsuario, TramoCarry } from "@/lib/mesa/payoff";
 
 // Resumen de la consola financiera: la foto del negocio en una pantalla.
 // Todo sale de datos reales (calcular_exposicion_global, ciclos, mesa);
@@ -43,12 +44,13 @@ export default function ConsolaResumen() {
   const [ciclos, setCiclos] = useState<CicloActivo[]>([]);
   const [niveles, setNiveles] = useState<Nivel[]>([]);
   const [tasa, setTasa] = useState<number | null>(null);
+  const [tramos, setTramos] = useState<TramoCarry[]>([]);
   const [mesa, setMesa] = useState<Record<string, number>>({});
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
     (async () => {
-      const [r1, r2, r3, r4, r5] = await Promise.all([
+      const [r1, r2, r3, r4, r5, r6] = await Promise.all([
         supabase.rpc("calcular_exposicion_global"),
         supabase
           .from("ciclos")
@@ -58,7 +60,11 @@ export default function ConsolaResumen() {
         supabase.from("productos").select("clave, nombre, precio, gente_requerida, dias_resolucion, alpha_em").order("precio"),
         supabase.from("parametros_pricing").select("tasa_cetes_anual").maybeSingle(),
         supabase.from("mesa_propuestas").select("estado").in("estado", ["pendiente", "aceptada", "aprobada_riesgo"]),
+        supabase.from("producto_carry_tramos").select("producto_clave, orden, premio_hasta, carry_pct"),
       ]);
+      setTramos(
+        ((r6.data as TramoCarry[]) ?? []).map((t) => ({ ...t, premio_hasta: t.premio_hasta == null ? null : Number(t.premio_hasta), carry_pct: Number(t.carry_pct) }))
+      );
       setExp(r1.data?.[0] ?? null);
       setCiclos((r2.data as unknown as CicloActivo[]) ?? []);
       setNiveles((r3.data as Nivel[]) ?? []);
@@ -129,6 +135,52 @@ export default function ConsolaResumen() {
               <span>Listas para publicar: {mesa.aprobada_riesgo ?? 0}</span>
             </div>
           </Link>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-1 text-sm font-semibold text-neutral-700">Cuánto gana PISO por usuario</h2>
+        <p className="mb-2 text-xs text-neutral-500">
+          Ingreso = alpha_em sobre el rendimiento + carry sobre el premio. &quot;Al año&quot; supone que el usuario mantiene su dinero en el nivel
+          todo el año, un ciclo tras otro. Sin cuota de participación.
+        </p>
+        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+          <table className="w-full text-sm tabular-nums">
+            <thead className="text-xs text-neutral-400">
+              <tr className="text-right">
+                <th className="px-4 py-2 text-left font-normal">Nivel</th>
+                <th className="font-normal">Boleto</th>
+                <th className="font-normal">Por ciclo</th>
+                <th className="font-normal">Ciclos/año</th>
+                <th className="font-normal">Al año</th>
+                <th className="px-4 font-normal">% del depósito</th>
+              </tr>
+            </thead>
+            <tbody>
+              {niveles.map((n) => {
+                const e = economiaPorUsuario(
+                  { ...n, precio: Number(n.precio), alpha_em: n.alpha_em == null ? null : Number(n.alpha_em) },
+                  tramos,
+                  tasa == null ? null : { valor: Number(tasa), fuente: "parametros_pricing" }
+                );
+                return (
+                  <tr key={n.clave} className="border-t border-neutral-100 text-right">
+                    <td className="px-4 py-2 text-left font-medium">{n.nombre}</td>
+                    <td>{mxn(e.boleto)}</td>
+                    <td>${e.por_ciclo.toFixed(2)}</td>
+                    <td>{e.ciclos_por_ano}</td>
+                    <td className="font-semibold text-emerald-700">{mxn(e.por_ano)}</td>
+                    <td className="px-4">{e.pct_del_deposito_anual}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {(tasa == null || niveles.some((n) => n.alpha_em == null)) && (
+            <p className="border-t border-neutral-100 px-4 py-2 text-xs text-amber-700">
+              Calculado con supuestos donde falta el dato: CETES 10% y alpha_em 25% (acuerdos del proyecto).
+            </p>
+          )}
         </div>
       </section>
 

@@ -661,8 +661,8 @@ páginas nuevas incluidas.
 
 Flujo de la mesa: **analista (agente) propone → mesa (humano) acepta → Riesgo aprueba con límite → se publica** como evento + ciclo en la app. Migración `0012_mesa_derivados.sql`.
 
-- **Analistas como plugins**: `src/lib/mesa/analistas/`, un archivo por mercado + `index.ts`. Hoy: Tasas Banxico (Beta-Binomial), Inflación INPC (caminata aleatoria normal), Tipo de cambio FIX (browniano geométrico) y Deportes Liga MX (probabilidad implícita de momios, riesgo legal alto). Para agregar un mercado: archivo nuevo, una línea en `index.ts` y su fila en `mesa_analistas`. La probabilidad la calcula código (`estocastico.ts`); Claude solo redacta la lectura (`narrativa.ts`).
-- **Payoff**: `payoff.ts`, espejo de `calcular_premio_ciclo()` (0010). Muestra premio, valor esperado, fondeo y déficit en el peor caso por nivel.
+- **Analistas como plugins**: `src/lib/mesa/analistas/`, un archivo por mercado + `index.ts`. Hoy: Tasas Banxico (Beta-Binomial), Inflación INPC (caminata aleatoria normal), Tipo de cambio FIX (browniano geométrico), Deportes globales (momios, riesgo legal alto), Cripto (volatilidad implícita de opciones Deribit) y Tendencias (precio de mercados de predicción, Polymarket). Cada hallazgo trae un gancho para redes. Para agregar un mercado: archivo nuevo, una línea en `index.ts` y su fila en `mesa_analistas`. La probabilidad la calcula código (`estocastico.ts`); Claude solo redacta la lectura (`narrativa.ts`).
+- **Payoff**: `payoff.ts`, punto único de la fórmula en TS: premio = rendimiento del pool (menos alpha_em y carry) + bote. PISO nunca pone de su bolsa. La consola muestra cuánto gana PISO por usuario.
 - **Cuándo corren**: L-V 7:00 CDMX por Vercel Cron (`vercel.json` → `GET /api/mesa/correr`), o con el botón "Correr analistas".
 - **Variables (solo servidor)**: `SUPABASE_SERVICE_ROLE_KEY`, `BANXICO_TOKEN`, `INEGI_TOKEN`, `ODDS_API_KEY`, `ANTHROPIC_API_KEY`, `CRON_SECRET`. Ver `.env.example`. Sin token, ese analista reporta "sin datos" y no propone nada.
 - **Analista de tasas**: necesita la fecha de la próxima decisión de Banxico (pestaña Analistas).

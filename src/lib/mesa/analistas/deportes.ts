@@ -1,4 +1,5 @@
-// Deportes -- ¿gana el local? El derivado de referencia son los momios
+// Deportes -- ¿gana el local? Ligas globales configurables (Liga MX,
+// Champions, Premier, NBA, NFL...). El derivado de referencia son los momios
 // 1X2 del mercado (varias casas). Propone los partidos que caben en algún
 // nivel, prefiriendo los más parejos (p cerca de 50%), que son los que más
 // enganchan y los que menos déficit dejan en el peor caso.
@@ -11,13 +12,19 @@ import type { ProductoMesa } from "../payoff";
 
 const NOMBRE_LIGA: Record<string, string> = {
   soccer_mexico_ligamx: "Liga MX",
+  soccer_uefa_champs_league: "Champions League",
+  soccer_epl: "Premier League",
+  basketball_nba: "NBA",
+  americanfootball_nfl: "NFL",
 };
 
 async function proponer(a: AnalistaRow, productos: ProductoMesa[]): Promise<Borrador[]> {
   const ligas = (a.config.ligas as string[] | undefined) ?? ["soccer_mexico_ligamx"];
   const max = Number(a.config.max_propuestas ?? 2);
 
-  const partidos = (await Promise.all(ligas.map(momiosLiga))).flat();
+  if (!process.env.ODDS_API_KEY) throw new SinDatos("falta ODDS_API_KEY");
+  // Una liga caída no tumba a las demás.
+  const partidos = (await Promise.allSettled(ligas.map(momiosLiga))).flatMap((r) => (r.status === "fulfilled" ? r.value : []));
   const candidatos = partidos
     .filter((p) => p.pLocalPorCasa.length >= 3)
     .map((p) => {
@@ -52,6 +59,7 @@ async function proponer(a: AnalistaRow, productos: ProductoMesa[]): Promise<Borr
         nota: "Empate cuenta como NO.",
       },
       producto_sugerido: nivel,
+      ref_externa: `odds-${p.id}`,
     } satisfies Borrador;
   });
 }

@@ -114,3 +114,82 @@ export async function momiosLiga(liga: string): Promise<PartidoMomios[]> {
       .filter((x): x is { casa: string; p: number } => x !== null),
   }));
 }
+
+// Deribit -- mercado de opciones cripto más grande. API pública, sin llave.
+export const URL_DERIBIT = "https://www.deribit.com/api/v2/public";
+
+export async function deribitCripto(moneda: "BTC" | "ETH"): Promise<{ spot: number; volImplicita: number; volHistorica: number | null }> {
+  const indice = `${moneda.toLowerCase()}_usd`;
+  const ahora = Date.now();
+  const [r1, r2, r3] = await Promise.all([
+    fetch(`${URL_DERIBIT}/get_index_price?index_name=${indice}`, { cache: "no-store" }),
+    fetch(`${URL_DERIBIT}/get_volatility_index_data?currency=${moneda}&start_timestamp=${ahora - 2 * 86_400_000}&end_timestamp=${ahora}&resolution=3600`, { cache: "no-store" }),
+    fetch(`${URL_DERIBIT}/get_historical_volatility?currency=${moneda}`, { cache: "no-store" }),
+  ]);
+  if (!r1.ok || !r2.ok) throw new Error(`Deribit ${moneda}: HTTP ${r1.status}/${r2.status}`);
+  const spot = Number((await r1.json())?.result?.index_price);
+  const dvol: number[][] = (await r2.json())?.result?.data ?? [];
+  const volImplicita = Number(dvol[dvol.length - 1]?.[4]) / 100;
+  let volHistorica: number | null = null;
+  if (r3.ok) {
+    const hv: number[][] = (await r3.json())?.result ?? [];
+    const ultimo = Number(hv[hv.length - 1]?.[1]);
+    volHistorica = Number.isFinite(ultimo) ? ultimo / 100 : null;
+  }
+  if (!Number.isFinite(spot) || !Number.isFinite(volImplicita)) throw new SinDatos(`Deribit ${moneda} sin precio o sin DVOL`);
+  return { spot, volImplicita, volHistorica };
+}
+
+// Polymarket -- mercado de predicción. Precio del "Sí" = probabilidad que
+// pone el mercado. API pública (Gamma), sin llave.
+export const URL_POLYMARKET = "https://gamma-api.polymarket.com/markets";
+
+export interface MercadoPrediccion {
+  id: string;
+  slug: string;
+  pregunta: string;
+  evento: string;
+  fin: Date;
+  pSi: number;
+  bid: number | null;
+  ask: number | null;
+  liquidez: number;
+  volumen24h: number;
+  etiquetas: string[];
+}
+
+export async function mercadosPrediccion(): Promise<MercadoPrediccion[]> {
+  const res = await fetch(`${URL_POLYMARKET}?active=true&closed=false&order=volume24hr&ascending=false&limit=100`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Polymarket: HTTP ${res.status}`);
+  const crudos: Record<string, unknown>[] = await res.json();
+  const parse = (x: unknown) => {
+    try {
+      return typeof x === "string" ? JSON.parse(x) : x;
+    } catch {
+      return null;
+    }
+  };
+  return crudos
+    .map((m) => {
+      const outcomes = parse(m.outcomes) as string[] | null;
+      const precios = parse(m.outcomePrices) as string[] | null;
+      if (!outcomes || !precios || outcomes.length !== 2 || outcomes[0] !== "Yes") return null;
+      const eventos = (m.events as { title?: string; tags?: { slug?: string }[] }[] | undefined) ?? [];
+      return {
+        id: String(m.id),
+        slug: String(m.slug ?? ""),
+        pregunta: String(m.question ?? ""),
+        evento: eventos[0]?.title ?? "",
+        fin: new Date(String(m.endDate)),
+        pSi: Number(precios[0]),
+        bid: m.bestBid == null ? null : Number(m.bestBid),
+        ask: m.bestAsk == null ? null : Number(m.bestAsk),
+        liquidez: Number(m.liquidityNum ?? m.liquidity ?? 0),
+        volumen24h: Number(m.volume24hr ?? 0),
+        etiquetas: [String(m.category ?? ""), ...eventos.flatMap((e) => (e.tags ?? []).map((t) => String(t.slug ?? "")))]
+          .map((t) => t.toLowerCase())
+          .filter(Boolean),
+      } satisfies MercadoPrediccion;
+    })
+    .filter((m): m is MercadoPrediccion => m !== null && Number.isFinite(m.pSi) && !Number.isNaN(m.fin.getTime()));
+}

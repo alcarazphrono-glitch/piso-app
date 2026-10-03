@@ -10,6 +10,9 @@ export interface Narrativa {
   tesis: string;
   riesgos: string;
   descripcion_usuario: string;
+  gancho_redes: string;
+  pregunta?: string;
+  titulo?: string;
   motor: "claude" | "plantilla";
 }
 
@@ -20,6 +23,7 @@ function plantilla(b: Borrador): Narrativa {
     tesis: `Modelo ${b.base.modelo}: probabilidad ${pct(b.base.probabilidad)} (intervalo ${pct(b.base.prob_baja)}–${pct(b.base.prob_alta)}).`,
     riesgos: "Sin lectura cualitativa (falta ANTHROPIC_API_KEY o falló la llamada). Revisar los datos a mano.",
     descripcion_usuario: b.pregunta,
+    gancho_redes: `${b.pregunta} El mercado dice ${pct(b.base.probabilidad)}. ¿Tú qué dices?`,
     motor: "plantilla",
   };
 }
@@ -29,7 +33,10 @@ Recibes un evento propuesto con su base estocástica ya calculada por código. N
 Escribe en español de México, directo y sin jerga.
 - tesis: 2 o 3 frases. Qué dicen los datos y por qué el modelo da esa probabilidad.
 - riesgos: 1 o 2 frases. Qué podría hacer que el modelo se equivoque (supuestos, eventos próximos, datos viejos).
-- descripcion_usuario: 1 frase corta que vería un usuario de 18 a 24 años para entender el evento. Nunca uses las palabras apuesta, apuéstale, jugada ni cuotas, y nunca prometas ganancias.`;
+- descripcion_usuario: 1 frase corta que vería un usuario de 18 a 24 años para entender el evento.
+- gancho_redes: 1 línea para TikTok/Instagram/X que haga que alguien de 18 a 24 quiera opinar y compartir. Puede usar el dato de la probabilidad del mercado. Máximo 140 caracteres, sin hashtags.
+- Si te piden pregunta y titulo: traduce el evento al español de México. pregunta = una pregunta de sí/no clara con la fecha; titulo = 4 a 8 palabras.
+En ningún campo uses las palabras apuesta, apuéstale, jugada ni cuotas, y nunca prometas ganancias.`;
 
 export async function redactar(nombreAnalista: string, b: Borrador): Promise<Narrativa> {
   if (!process.env.ANTHROPIC_API_KEY) return plantilla(b);
@@ -50,8 +57,10 @@ export async function redactar(nombreAnalista: string, b: Borrador): Promise<Nar
               tesis: { type: "string" },
               riesgos: { type: "string" },
               descripcion_usuario: { type: "string" },
+              gancho_redes: { type: "string" },
+              ...(b.traducir ? { pregunta: { type: "string" }, titulo: { type: "string" } } : {}),
             },
-            required: ["tesis", "riesgos", "descripcion_usuario"],
+            required: ["tesis", "riesgos", "descripcion_usuario", "gancho_redes", ...(b.traducir ? ["pregunta", "titulo"] : [])],
             additionalProperties: false,
           },
         },
@@ -63,6 +72,8 @@ export async function redactar(nombreAnalista: string, b: Borrador): Promise<Nar
           content: JSON.stringify({
             analista: nombreAnalista,
             pregunta: b.pregunta,
+            titulo: b.titulo,
+            traducir_pregunta_y_titulo: !!b.traducir,
             fecha_resolucion: b.fecha_texto,
             fuente_resolucion: b.fuente_resolucion,
             modelo: b.base.modelo,

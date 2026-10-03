@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { PLUGINS, AnalistaRow, Borrador, PluginAnalista, tasaCetesBanxico } from "@/lib/mesa/analistas";
 import { SinDatos } from "@/lib/mesa/fuentes";
 import { redactar } from "@/lib/mesa/narrativa";
-import { calcularPayoff, ProductoMesa, TramoCarry } from "@/lib/mesa/payoff";
+import { calcularPayoff, ProductoMesa, TasaCetes, TramoCarry } from "@/lib/mesa/payoff";
 
 // Mesa de derivados -- corre a los analistas.
 //   GET  = cron de Vercel (vercel.json), con Authorization: Bearer CRON_SECRET.
@@ -73,7 +73,13 @@ async function correr(origen: "cron" | "manual", userId: string | null) {
     carry_pct: Number(t.carry_pct),
   })) as TramoCarry[];
 
-  let tasa: { valor: number; fuente: string } | null = null;
+  // Bote acumulado por nivel (tabla botes, migración 0011). Si todavía no
+  // existe, el premio se muestra sin bote.
+  const { data: botesData } = await db.from("botes").select("producto_clave, monto");
+  const botes: Record<string, number> = {};
+  for (const b of (botesData as { producto_clave: string; monto: number }[] | null) ?? []) botes[b.producto_clave] = Number(b.monto);
+
+  let tasa: TasaCetes = null;
   if (params?.tasa_cetes_anual != null) tasa = { valor: Number(params.tasa_cetes_anual), fuente: "parametros_pricing" };
   else {
     const vivo = await tasaCetesBanxico();
@@ -87,7 +93,7 @@ async function correr(origen: "cron" | "manual", userId: string | null) {
     .single();
   if (e3) return NextResponse.json({ error: e3.message }, { status: 500 });
 
-  const ctx = { db, corridaId: corrida.id as string, prods, tramosN, tasa };
+  const ctx = { db, corridaId: corrida.id as string, prods, tramosN, tasa, botes };
   const resultados: ResultadoAnalista[] = (
     await Promise.all(
       ((analistas ?? []) as AnalistaRow[]).map(async (a): Promise<ResultadoAnalista[]> => {
@@ -114,31 +120,33 @@ async function correr(origen: "cron" | "manual", userId: string | null) {
 }
 
 async function guardar(
-  ctx: { db: Db; corridaId: string; prods: ProductoMesa[]; tramosN: TramoCarry[]; tasa: { valor: number; fuente: string } | null },
+  ctx: { db: Db; corridaId: string; prods: ProductoMesa[]; tramosN: TramoCarry[]; tasa: TasaCetes; botes: Record<string, number> },
   a: AnalistaRow,
   plugin: PluginAnalista,
   b: Borrador
 ): Promise<ResultadoAnalista> {
   const { db } = ctx;
-  const { data: viva } = await db
+  const filtro = db
     .from("mesa_propuestas")
     .select("id")
     .eq("analista_clave", a.clave)
-    .eq("pregunta", b.pregunta)
-    .in("estado", ["pendiente", "aceptada", "aprobada_riesgo"])
-    .maybeSingle();
+    .in("estado", ["pendiente", "aceptada", "aprobada_riesgo"]);
+  const { data: viva } = await (b.ref_externa ? filtro.eq("ref_externa", b.ref_externa) : filtro.eq("pregunta", b.pregunta)).maybeSingle();
   if (viva) return { analista: a.clave, estado: "duplicada", detalle: b.pregunta };
 
   const narrativa = await redactar(a.nombre, b);
-  const niveles = ctx.prods.map((p) => calcularPayoff(b.base.probabilidad, p, ctx.tramosN, ctx.tasa));
+  const niveles = ctx.prods.map((p) => calcularPayoff(p, ctx.tramosN, ctx.tasa, ctx.botes[p.clave] ?? 0));
+  const riesgo = b.riesgo_legal ?? plugin.riesgoLegal;
+  const pregunta = (b.traducir && narrativa.pregunta) || b.pregunta;
+  const titulo = (b.traducir && narrativa.titulo) || b.titulo;
 
   const { data: prop, error } = await db
     .from("mesa_propuestas")
     .insert({
       analista_clave: a.clave,
       corrida_id: ctx.corridaId,
-      titulo: b.titulo,
-      pregunta: b.pregunta,
+      titulo,
+      pregunta,
       descripcion_usuario: narrativa.descripcion_usuario,
       categoria: b.categoria,
       fuente_resolucion: b.fuente_resolucion,
@@ -150,10 +158,12 @@ async function guardar(
       prob_alta: b.base.prob_alta,
       parametros: b.base.parametros,
       datos: { ...b.datos, narrativa: narrativa.motor },
-      riesgo_legal: plugin.riesgoLegal.nivel,
-      nota_legal: plugin.riesgoLegal.nota,
+      riesgo_legal: riesgo.nivel,
+      nota_legal: riesgo.nota,
       tesis: narrativa.tesis,
       riesgos: narrativa.riesgos,
+      gancho_redes: narrativa.gancho_redes,
+      ref_externa: b.ref_externa ?? null,
       payoff: { niveles, tasa_cetes: ctx.tasa },
       producto_sugerido: b.producto_sugerido,
     })
@@ -166,5 +176,5 @@ async function guardar(
     accion: "agente_propone",
     nota: `${a.nombre}: p=${b.base.probabilidad.toFixed(2)} (${b.base.modelo})`,
   });
-  return { analista: a.clave, estado: "propuesta", detalle: b.pregunta };
+  return { analista: a.clave, estado: "propuesta", detalle: pregunta };
 }

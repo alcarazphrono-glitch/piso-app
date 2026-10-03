@@ -30,6 +30,7 @@ interface Propuesta {
   datos: Record<string, unknown>;
   tesis: string;
   riesgos: string;
+  gancho_redes: string;
   payoff: { niveles?: PayoffNivel[] };
   riesgo_legal: "bajo" | "medio" | "alto";
   nota_legal: string;
@@ -401,18 +402,31 @@ function TarjetaPropuesta({ p, analista, children }: { p: Propuesta; analista: s
         </div>
       </div>
 
+      {p.gancho_redes && (
+        <div className="flex items-center gap-2 border-t border-neutral-100 px-4 py-2 text-sm">
+          <span className="shrink-0 text-xs font-semibold text-neutral-700">Gancho para redes</span>
+          <span className="flex-1 text-neutral-700">{p.gancho_redes}</span>
+          <button onClick={() => navigator.clipboard?.writeText(p.gancho_redes)} className="shrink-0 text-xs text-neutral-400 underline">
+            Copiar
+          </button>
+        </div>
+      )}
+
       {niveles.length > 0 && (
         <div className="overflow-x-auto border-t border-neutral-100 px-4 py-3">
-          <p className="mb-1 text-xs font-semibold text-neutral-700">Payoff por nivel (digital: paga el premio si ocurre)</p>
+          <p className="mb-1 text-xs font-semibold text-neutral-700">
+            Payoff por nivel · premio = rendimiento del pool + bote · PISO no pone de su bolsa
+          </p>
           <table className="w-full text-xs tabular-nums">
             <thead className="text-neutral-400">
               <tr className="text-right">
                 <th className="py-1 text-left font-normal">Nivel</th>
                 <th className="font-normal">Rendimiento pool</th>
-                <th className="font-normal">Premio neto</th>
-                <th className="font-normal">Valor esperado</th>
-                <th className="font-normal">Fondeo</th>
-                <th className="font-normal">Déficit peor caso</th>
+                <th className="font-normal">Premio base</th>
+                <th className="font-normal">Bote</th>
+                <th className="font-normal">Premio</th>
+                <th className="font-normal">Ingreso PISO</th>
+                <th className="font-normal">Por usuario</th>
               </tr>
             </thead>
             <tbody>
@@ -423,10 +437,11 @@ function TarjetaPropuesta({ p, analista, children }: { p: Propuesta; analista: s
                     {n.nivel === p.producto_sugerido && <span className="ml-1 text-[10px] text-emerald-700">sugerido</span>}
                   </td>
                   <td>{mxn(n.rendimiento_pool)}</td>
-                  <td>{mxn(n.premio_neto)}</td>
-                  <td>{mxn(n.valor_esperado)}</td>
-                  <td>{mxn(n.fondeo_disponible)}</td>
-                  <td className={n.deficit_peor_caso > 0 ? "text-red-600" : ""}>{mxn(n.deficit_peor_caso)}</td>
+                  <td>{mxn(n.premio_base)}</td>
+                  <td>{mxn(n.bote)}</td>
+                  <td>{mxn(n.premio)}</td>
+                  <td className="text-emerald-700">{mxn(n.ingreso_piso)}</td>
+                  <td>${Number(n.ingreso_por_usuario).toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -470,17 +485,17 @@ function AccionRiesgo({
   onRechazar: (nota: string) => void;
 }) {
   const sugerido = p.payoff?.niveles?.find((n) => n.nivel === p.producto_sugerido) ?? p.payoff?.niveles?.[0];
-  const [limite, setLimite] = useState(String(sugerido?.peor_caso ?? ""));
+  const [limite, setLimite] = useState(String(sugerido?.premio ?? ""));
   const [nota, setNota] = useState("");
   const ancho = (p.prob_alta ?? p.probabilidad) - (p.prob_baja ?? p.probabilidad);
   return (
     <div>
       <div className="mb-2 flex flex-wrap gap-4 text-xs text-neutral-600">
         <span>
-          Peor caso ({sugerido?.nombre ?? "—"}): <b className="tabular-nums">{mxn(sugerido?.peor_caso)}</b>
+          Premio a pagar ({sugerido?.nombre ?? "—"}): <b className="tabular-nums">{mxn(sugerido?.premio)}</b>
         </span>
         <span>
-          Lo pone la reserva: <b className={`tabular-nums ${sugerido && sugerido.deficit_peor_caso > 0 ? "text-red-600" : ""}`}>{mxn(sugerido?.deficit_peor_caso)}</b>
+          PISO pone de su bolsa: <b className="tabular-nums">{mxn(sugerido?.aporte_piso ?? 0)}</b>
         </span>
         <span className={ancho > 0.3 ? "text-amber-700" : ""}>Incertidumbre del modelo: ±{Math.round((ancho * 100) / 2)} pts</span>
       </div>
