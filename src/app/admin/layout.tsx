@@ -74,6 +74,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="flex flex-wrap items-center gap-4">
             <span className="text-sm font-semibold tracking-tight">PISO Core</span>
             <nav className="flex flex-wrap gap-1">
+              <Link href="/admin/mesa" className={linkClass("/admin/mesa")}>Mesa</Link>
               <Link href="/admin/eventos" className={linkClass("/admin/eventos")}>Eventos</Link>
               <Link href="/admin/productos" className={linkClass("/admin/productos")}>Productos</Link>
               <Link href="/admin/ciclos" className={linkClass("/admin/ciclos")}>Ciclos</Link>

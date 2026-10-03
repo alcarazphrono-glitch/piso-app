@@ -654,3 +654,14 @@ páginas nuevas incluidas.
 
 ---
 *PISO — MVP del loop · Agosto-Septiembre 2026 · Confidencial*
+
+## Mesa de derivados (`/admin/mesa`)
+
+Flujo: **analista (agente) propone → mesa (humano) acepta → Riesgo aprueba con límite → se publica** como evento + ciclo en la app. Migración `0012_mesa_derivados.sql`.
+
+- **Analistas**: `src/lib/mesa/analistas.ts`. Tasas Banxico (Beta-Binomial), Inflación INPC (caminata aleatoria normal) y Tipo de cambio FIX (browniano geométrico). La probabilidad la calcula código (`estocastico.ts`); Claude solo redacta la lectura (`narrativa.ts`).
+- **Payoff**: `payoff.ts`, espejo de `calcular_premio_ciclo()` (0010). Muestra premio, valor esperado, fondeo y déficit en el peor caso por nivel.
+- **Cuándo corren**: L-V 7:00 CDMX por Vercel Cron (`vercel.json` → `GET /api/mesa/correr`), o con el botón "Correr analistas".
+- **Variables (solo servidor)**: `SUPABASE_SERVICE_ROLE_KEY`, `BANXICO_TOKEN`, `INEGI_TOKEN`, `ANTHROPIC_API_KEY`, `CRON_SECRET`. Ver `.env.example`. Sin token, ese analista reporta "sin datos" y no propone nada.
+- **Analista de tasas**: necesita la fecha de la próxima decisión de Banxico (pestaña Analistas).
+- **Reglas duras en la base**: rechazar exige motivo; Riesgo exige límite y se niega con el kill switch global activo; publicar exige que el evento se resuelva después de que cierre la venta del nivel (y a más tardar 7 días después) y que el copy no use términos prohibidos. Bitácora append-only. `mesa_config.cuatro_ojos` separa a quien acepta de quien aprueba Riesgo.
