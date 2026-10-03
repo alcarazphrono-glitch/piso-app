@@ -113,7 +113,7 @@ function BoletoResultadoContenido() {
 
       <p className="ml-0.5 mt-3.5 text-[13px] text-ink-soft">
         {acertaste
-          ? "Acertaste la predicción -- solo un boleto se lleva el sorteo cada vez. Tu racha sigue viva."
+          ? "Acertaste la predicción. Solo un boleto se lleva el sorteo cada vez. Tu racha sigue viva."
           : "Tu racha sigue viva si entras a otro nivel hoy."}
       </p>
 

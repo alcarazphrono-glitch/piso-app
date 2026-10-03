@@ -6,7 +6,8 @@ import { supabase } from "@/lib/supabase";
 import { Evento, Posicion } from "@/types";
 import { DIAS_HASTA_RESOLUCION } from "@/lib/config";
 import { obtenerEvento, simularResultadoDemo } from "@/lib/eventos";
-import { Screen, Wordmark, H1, Lede, SecondaryButton, Card, Mono } from "@/components/ui";
+import { Screen, BackChevron, H1, Lede, SecondaryButton, Card, Mono } from "@/components/ui";
+import { mensajeParaUsuario } from "@/lib/errores";
 
 // Pantalla de Posición -- no está en el lienzo de Behavioral (su memo no
 // la menciona en la lista de 6 pantallas ni en las secciones 1-8), así
@@ -21,6 +22,7 @@ function PosicionContenido() {
   const [posicion, setPosicion] = useState<Posicion | null>(null);
   const [evento, setEvento] = useState<Evento | null>(null);
   const [simulando, setSimulando] = useState(false);
+  const [errorSimular, setErrorSimular] = useState<string | null>(null);
 
   useEffect(() => {
     if (!posicionId) return;
@@ -50,12 +52,13 @@ function PosicionContenido() {
   async function simularResultadoAhora() {
     if (!posicion) return;
     setSimulando(true);
+    setErrorSimular(null);
 
     try {
       await simularResultadoDemo(posicion.id);
-    } catch {
+    } catch (e) {
       setSimulando(false);
-      alert("No se pudo resolver la posición. Intenta de nuevo.");
+      setErrorSimular(mensajeParaUsuario(e, "No se pudo resolver la posición. Intenta de nuevo."));
       return;
     }
 
@@ -69,7 +72,7 @@ function PosicionContenido() {
   return (
     <Screen>
       <div className="flex items-center justify-between pt-2">
-        <Wordmark />
+        <BackChevron onClick={() => router.push("/home")} />
         <span className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12.5px] font-medium text-ink-soft">
           Posición abierta
         </span>
@@ -101,6 +104,7 @@ function PosicionContenido() {
           <SecondaryButton onClick={simularResultadoAhora} disabled={simulando}>
             {simulando ? "Resolviendo…" : "Simular resultado ahora"}
           </SecondaryButton>
+          {errorSimular && <p className="mt-3 text-sm text-red-500">{errorSimular}</p>}
         </div>
       </div>
     </Screen>

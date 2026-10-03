@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { mensajeParaUsuario } from "@/lib/errores";
 import { supabase } from "@/lib/supabase";
 import { posthog } from "@/lib/posthog";
 import { obtenerRacha } from "@/lib/demo";
@@ -82,7 +83,7 @@ export default function CicloPage() {
       router.push(`/boleto?id=${boleto.id}`);
     } catch (e) {
       setComprando(false);
-      setErrorCompra(e instanceof Error ? e.message : "No se pudo comprar el boleto. Intenta de nuevo.");
+      setErrorCompra(mensajeParaUsuario(e, "No se pudo comprar el boleto. Intenta de nuevo."));
     }
   }
 

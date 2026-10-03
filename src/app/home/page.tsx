@@ -84,7 +84,7 @@ export default function HomePage() {
               Tecnología sola -- queda pendiente de que Dirección General
               confirme si esto reemplaza el CTA principal (ver README). */}
           <Link href="/ciclos" className="w-full">
-            <SecondaryButton>Boletos por nivel (Entrada/Crecimiento/Elite)</SecondaryButton>
+            <SecondaryButton>Boletos por nivel</SecondaryButton>
           </Link>
         </div>
 

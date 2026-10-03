@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { mensajeParaUsuario } from "@/lib/errores";
 import { supabase } from "@/lib/supabase";
 import { obtenerCiclosActivos, CicloConProducto } from "@/lib/boletos";
 import { Screen, BackChevron, H1, ShieldIcon } from "@/components/ui";
@@ -32,7 +33,7 @@ export default function CiclosPage() {
       try {
         setCiclos(await obtenerCiclosActivos());
       } catch (e) {
-        setError(e instanceof Error ? e.message : "No se pudieron cargar los ciclos.");
+        setError(mensajeParaUsuario(e, "No se pudieron cargar los niveles."));
       } finally {
         setCargando(false);
       }
@@ -52,7 +53,7 @@ export default function CiclosPage() {
       </div>
       <p className="mt-3 text-[13.5px] leading-relaxed text-ink-soft">
         Elige un nivel, responde sí o no a un evento real. Cuando el nivel se llena, se sortea un premio entre
-        quienes acertaron -- y tu depósito regresa completo, ganes o no.
+        quienes acertaron. Tu depósito regresa completo, ganes o no.
       </p>
 
       <div className="mt-7 flex flex-col gap-3.5">
@@ -83,7 +84,7 @@ export default function CiclosPage() {
                   <div className="h-full rounded-full bg-mint" style={{ width: `${pct}%` }} />
                 </div>
                 <span className="shrink-0 text-[12.5px] font-medium text-ink-soft">
-                  {c.estado === "lleno" ? "Lleno -- por resolverse" : `Faltan ${faltan.toLocaleString("es-MX")} lugares`}
+                  {c.estado === "lleno" ? "Lleno, por resolverse" : `Faltan ${faltan.toLocaleString("es-MX")} lugares`}
                 </span>
               </div>
             </Link>
