@@ -133,19 +133,24 @@ export async function calcularTicketPromedioHistorico(userId: string): Promise<n
   return volumen / total;
 }
 
+export interface PremioCiclo {
+  premio: number; // lo que se lleva el ganador: base + bote
+  bote: number; // parte que viene de ciclos anteriores sin acertante
+}
+
 /**
  * Premio que se pagaría hoy en este ciclo -- el mismo número que usa
- * resolver_ciclo() (calcular_premio_ciclo en 0010): fórmula real si
- * Finanzas ya llenó tasa_cetes_anual/alpha_em, si no productos.premio_estatico,
- * más el piso del bono de bienvenida si está activo. Nunca se calcula en
- * el navegador. null si falla, para que la pantalla no muestre un número
- * inventado.
+ * resolver_ciclo(). calcular_premio_ciclo (0011) es el ÚNICO lugar donde
+ * se calcula: premio base (fórmula de Finanzas o premio_estatico, más el
+ * piso del bono) + bote acumulado del nivel. Nunca se calcula en el
+ * navegador. null si falla, para no mostrar un número inventado.
  */
-export async function obtenerPremioCiclo(cicloId: string): Promise<number | null> {
+export async function obtenerPremioCiclo(cicloId: string): Promise<PremioCiclo | null> {
   const { data, error } = await supabase.rpc("calcular_premio_ciclo", { p_ciclo_id: cicloId });
   if (error) return null;
-  const fila = (Array.isArray(data) ? data[0] : data) as { premio: number } | undefined;
-  return fila?.premio ?? null;
+  const fila = (Array.isArray(data) ? data[0] : data) as { premio: number; bote: number | null } | undefined;
+  if (fila?.premio == null) return null;
+  return { premio: Number(fila.premio), bote: Number(fila.bote ?? 0) };
 }
 
 export interface MiBoleto extends Boleto {

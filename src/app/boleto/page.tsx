@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { obtenerBoleto, obtenerCiclo, obtenerPremioCiclo, Boleto, CicloConProducto } from "@/lib/boletos";
+import { obtenerBoleto, obtenerCiclo, obtenerPremioCiclo, Boleto, CicloConProducto, PremioCiclo } from "@/lib/boletos";
 import { Screen, Wordmark, BackChevron, H1, Lede, PrimaryButton, SecondaryButton, Card, Mono } from "@/components/ui";
 
 // Pantalla de "tu boleto está adentro" -- a diferencia de /posicion, aquí
@@ -19,7 +19,7 @@ function BoletoContenido() {
   const boletoId = params.get("id");
   const [boleto, setBoleto] = useState<Boleto | null>(null);
   const [ciclo, setCiclo] = useState<CicloConProducto | null>(null);
-  const [premio, setPremio] = useState<number | null>(null);
+  const [premio, setPremio] = useState<PremioCiclo | null>(null);
 
   async function cargar() {
     if (!boletoId) return;
@@ -97,7 +97,7 @@ function BoletoContenido() {
           {premio != null && (
             <Card className="flex items-center justify-between">
               <span className="text-sm text-ink-soft">Premio en juego</span>
-              <span className="font-display text-base font-bold text-mint">${premio.toLocaleString("es-MX")}</span>
+              <span className="font-display text-base font-bold text-mint">${premio.premio.toLocaleString("es-MX")}</span>
             </Card>
           )}
           <Card className="flex items-center justify-between">

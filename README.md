@@ -672,3 +672,7 @@ Se probó contra Postgres 16 con PostgREST, como usuario normal y como operador.
 La 0011 se puede volver a correr sin errores (políticas con `drop policy if exists`).
 
 **App nativa (Capacitor):** `/ciclo` y `/evento` ahora usan `?id=` en vez de rutas dinámicas, y `CAPACITOR_BUILD=1 npm run build` genera `out/` como sitio estático. El build de Vercel no cambia y los links viejos redirigen. Ver `/mnt/project-files/piso-app/app-store-plan.md`.
+
+**Bote acumulado (0011, sección 6; decisión de Beto, 3-oct-2026):** si nadie acierta, el premio base del ciclo entra al bote de su nivel (`bote_movimientos`, inmutable; `botes` es la caché). El siguiente ciclo juega por base + bote. Al llegar a `productos.bote_max_ciclos` ciclos seguidos sin acertante (3 por default), el premio se sortea entre todos los participantes, para que el premio siempre se entregue. `calcular_premio_ciclo()` es el único lugar donde se calcula el premio (base + bote), y la exposición global ya lo incluye. Home ahora solo ofrece Boletos.
+
+**Nota para el build de Capacitor:** la mesa de derivados (PR #3) agrega `src/app/api/...`. Las rutas API no existen en un export estático, así que el build de la app nativa tiene que excluir /admin y /api (la app de la tienda es solo la parte de usuario).

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { obtenerBalance } from "@/lib/demo";
 import { obtenerMisBoletos, boletoEnJuego, MiBoleto } from "@/lib/boletos";
-import { Screen, Wordmark, PracticeBar, PrimaryButton, SecondaryButton, ShieldCheckIcon } from "@/components/ui";
+import { Screen, Wordmark, PracticeBar, PrimaryButton, ShieldCheckIcon } from "@/components/ui";
 
 // Pantalla Home -- memo Behavioral, sección 1 ("Home — sin cambios de
 // fondo"): el Dato 3 confirma que el drop-off NO está aquí, así que se
@@ -92,17 +92,11 @@ export default function HomePage() {
               )}
             </p>
           </div>
-          <Link href="/eventos" className="mt-1.5 w-full">
-            <PrimaryButton>Ver eventos</PrimaryButton>
-          </Link>
-          {/* Sistema de boletos por nivel (spec de Finanzas, 23-sep-2026) --
-              se agrega como una segunda entrada, sin quitar "Ver eventos":
-              decidir cuál es el CTA principal de Home es una decisión de
-              producto/IA más grande que no le corresponde inventar a
-              Tecnología sola -- queda pendiente de que Dirección General
-              confirme si esto reemplaza el CTA principal (ver README). */}
-          <Link href="/ciclos" className="w-full">
-            <SecondaryButton>Boletos por nivel</SecondaryButton>
+          {/* Decisión de Beto (3-oct-2026): Home con un solo producto, los
+              boletos por nivel. El flujo viejo de eventos/posiciones sigue
+              existiendo (/eventos) pero ya no se ofrece desde aquí. */}
+          <Link href="/ciclos" className="mt-1.5 w-full">
+            <PrimaryButton>Ver niveles</PrimaryButton>
           </Link>
         </div>
 

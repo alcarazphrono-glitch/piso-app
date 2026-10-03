@@ -17,6 +17,11 @@ interface Resolucion {
   resultado: "si" | "no";
   premio_pagado: number | null;
   ganador_boleto_id: string | null;
+  // 0011: cómo se resolvió el sorteo -- 'acertantes', 'todos_por_tope'
+  // (3 ciclos sin acertante, se sortea entre todos) o 'sin_sorteo_acumula'
+  // (nadie acertó, el premio pasa al bote del siguiente ciclo).
+  sorteo_entre: "acertantes" | "todos_por_tope" | "sin_sorteo_acumula" | null;
+  premio_base: number | null;
 }
 
 function BoletoResultadoContenido() {
@@ -42,7 +47,7 @@ function BoletoResultadoContenido() {
       setBoleto(b);
       const [c, { data: res }, r] = await Promise.all([
         obtenerCiclo(b.ciclo_id),
-        supabase.from("ciclo_resoluciones").select("resultado, premio_pagado, ganador_boleto_id").eq("ciclo_id", b.ciclo_id).order("resuelto_en", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("ciclo_resoluciones").select("resultado, premio_pagado, ganador_boleto_id, sorteo_entre, premio_base").eq("ciclo_id", b.ciclo_id).order("resuelto_en", { ascending: false }).limit(1).maybeSingle(),
         obtenerRacha(user.id),
       ]);
       setCiclo(c);
@@ -55,6 +60,8 @@ function BoletoResultadoContenido() {
 
   const ganasteSorteo = boleto.ganador === true;
   const acertaste = boleto.acerto === true;
+  const porTope = resolucion?.sorteo_entre === "todos_por_tope";
+  const seAcumulo = resolucion?.sorteo_entre === "sin_sorteo_acumula";
 
   // -------------------------------------------------------- GANASTE EL SORTEO
   if (ganasteSorteo) {
@@ -68,7 +75,9 @@ function BoletoResultadoContenido() {
             MXN
           </p>
           <p className="max-w-[250px] text-base leading-relaxed text-ganaste-ink-soft">
-            Ganaste el sorteo de {ciclo.producto.nombre}. Acertaste, y te tocó el premio.
+            {porTope
+              ? `Nadie acertó en ${ciclo.producto.nombre} varios ciclos seguidos, así que el bote se sorteó entre todos. Te tocó a ti.`
+              : `Ganaste el sorteo de ${ciclo.producto.nombre}. Acertaste, y te tocó el premio.`}
           </p>
         </div>
         <div className="mb-4 flex w-full items-center justify-between rounded-2xl border border-ganaste-card-border bg-ganaste-card p-[18px]">
@@ -95,7 +104,7 @@ function BoletoResultadoContenido() {
       </div>
 
       <H1 className="mt-[26px] max-w-[300px] text-[25px]">
-        {acertaste ? "Acertaste, pero el sorteo no te tocó." : "Esta vez no acertaste."}
+        {acertaste ? "Acertaste, pero el sorteo no te tocó." : seAcumulo ? "Nadie acertó esta vez." : "Esta vez no acertaste."}
         <br />
         Tu depósito sigue ahí.
       </H1>
@@ -114,7 +123,9 @@ function BoletoResultadoContenido() {
       <p className="ml-0.5 mt-3.5 text-[13px] text-ink-soft">
         {acertaste
           ? "Acertaste la predicción. Solo un boleto se lleva el sorteo cada vez. Tu racha sigue viva."
-          : "Tu racha sigue viva si entras a otro nivel hoy."}
+          : seAcumulo
+            ? `El premio${resolucion?.premio_base ? ` de $${Number(resolucion.premio_base).toLocaleString("es-MX")}` : ""} se suma al bote del siguiente ciclo de ${ciclo.producto.nombre}. Puedes entrar a ese o elegir otro evento.`
+            : "Tu racha sigue viva si entras a otro nivel hoy."}
       </p>
 
       <PrimaryButton className="mt-8" onClick={() => router.push("/ciclos")}>
