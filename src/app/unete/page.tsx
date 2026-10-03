@@ -115,7 +115,7 @@ export default function UnetePage() {
               n="3"
               icono={<TrophyIcon className="h-5 w-5 text-gold" />}
               titulo="Si aciertas, participas"
-              texto="Quien acierta entra por el premio del evento, que sale del rendimiento del grupo. Si no, tu capital regresa completo."
+              texto="Quien acierta entra por el premio: el rendimiento del grupo más un bote que crece. Si no, tu capital regresa completo."
             />
           </div>
         </section>
@@ -394,7 +394,7 @@ function BarraPiso() {
         </div>
       </div>
       <p className="mt-5 text-[12px] leading-relaxed text-faint">
-        Sin escala. El rendimiento de una persona es pequeño frente a su capital; por eso se junta el de todo el grupo para formar el premio del evento.
+        Sin escala. El rendimiento de una persona es pequeño frente a su capital; por eso se junta el de todo el grupo, más un bote que crece, para formar el premio.
       </p>
     </div>
   );
