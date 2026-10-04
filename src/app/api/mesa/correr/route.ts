@@ -3,7 +3,9 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { PLUGINS, AnalistaRow, Borrador, PluginAnalista, tasaCetesBanxico } from "@/lib/mesa/analistas";
 import { SinDatos } from "@/lib/mesa/fuentes";
 import { redactar } from "@/lib/mesa/narrativa";
-import { calcularPayoff, ProductoMesa, TasaCetes, TramoCarry } from "@/lib/mesa/payoff";
+import { calcularPayoff, ProductoMesa } from "@/lib/mesa/payoff";
+import { cargarEscenario } from "@/lib/economia/cargar";
+import { NIVELES, type Escenario } from "@/lib/economia/modelo";
 
 // Mesa de derivados -- corre a los analistas.
 //   GET  = cron de Vercel (vercel.json), con Authorization: Bearer CRON_SECRET.
@@ -54,10 +56,9 @@ async function correr(origen: "cron" | "manual", userId: string | null) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 
-  const [{ data: analistas, error: e1 }, { data: productos, error: e2 }, { data: tramos }, { data: params }] = await Promise.all([
+  const [{ data: analistas, error: e1 }, { data: productos, error: e2 }, { data: params }] = await Promise.all([
     db.from("mesa_analistas").select("clave, nombre, mercado, config").eq("activo", true),
     db.from("productos").select("clave, nombre, precio, gente_requerida, dias_resolucion, alpha_em").eq("activo", true),
-    db.from("producto_carry_tramos").select("producto_clave, orden, premio_hasta, carry_pct"),
     db.from("parametros_pricing").select("tasa_cetes_anual").maybeSingle(),
   ]);
   if (e1 || e2) return NextResponse.json({ error: (e1 || e2)!.message }, { status: 500 });
@@ -67,30 +68,29 @@ async function correr(origen: "cron" | "manual", userId: string | null) {
     precio: Number(p.precio),
     alpha_em: p.alpha_em == null ? null : Number(p.alpha_em),
   })) as ProductoMesa[];
-  const tramosN = (tramos ?? []).map((t) => ({
-    ...t,
-    premio_hasta: t.premio_hasta == null ? null : Number(t.premio_hasta),
-    carry_pct: Number(t.carry_pct),
-  })) as TramoCarry[];
-
   // Bote acumulado por nivel (tabla botes, migración 0011). Si todavía no
   // existe, el premio se muestra sin bote.
   const { data: botesData } = await db.from("botes").select("producto_clave, monto");
   const botes: Record<string, number> = {};
   for (const b of (botesData as { producto_clave: string; monto: number }[] | null) ?? []) botes[b.producto_clave] = Number(b.monto);
 
-  let tasa: TasaCetes = null;
-  if (params?.tasa_cetes_anual != null) tasa = { valor: Number(params.tasa_cetes_anual), fuente: "parametros_pricing" };
-  else {
+  if (params?.tasa_cetes_anual == null) {
     // Una sola fuente: si la base no tiene tasa, la Mesa guarda ahí el CETES
     // 28 de Banxico para que calcular_premio_ciclo() y la Mesa den el mismo
     // premio. Solo llena el hueco (is null): nunca pisa un valor que puso
     // Finanzas. El cambio queda en parametros_pricing_historial (trigger 0003).
     const vivo = await tasaCetesBanxico();
     if (vivo != null) {
-      const { error } = await db.from("parametros_pricing").update({ tasa_cetes_anual: vivo }).eq("id", true).is("tasa_cetes_anual", null);
-      if (!error) tasa = { valor: vivo, fuente: "parametros_pricing" };
+      await db.from("parametros_pricing").update({ tasa_cetes_anual: vivo }).eq("id", true).is("tasa_cetes_anual", null);
     }
+  }
+
+  // Escenario de economía (PR #4): mismo cálculo que la app y Palancas.
+  let eco;
+  try {
+    eco = await cargarEscenario(db);
+  } catch (e) {
+    return NextResponse.json({ error: `no se pudo cargar la economía: ${(e as Error).message}` }, { status: 500 });
   }
 
   const { data: corrida, error: e3 } = await db
@@ -100,7 +100,7 @@ async function correr(origen: "cron" | "manual", userId: string | null) {
     .single();
   if (e3) return NextResponse.json({ error: e3.message }, { status: 500 });
 
-  const ctx = { db, corridaId: corrida.id as string, prods, tramosN, tasa, botes };
+  const ctx = { db, corridaId: corrida.id as string, escenario: eco.escenario, supuestos: eco.supuestos, botes };
   const resultados: ResultadoAnalista[] = (
     await Promise.all(
       ((analistas ?? []) as AnalistaRow[]).map(async (a): Promise<ResultadoAnalista[]> => {
@@ -127,7 +127,7 @@ async function correr(origen: "cron" | "manual", userId: string | null) {
 }
 
 async function guardar(
-  ctx: { db: Db; corridaId: string; prods: ProductoMesa[]; tramosN: TramoCarry[]; tasa: TasaCetes; botes: Record<string, number> },
+  ctx: { db: Db; corridaId: string; escenario: Escenario; supuestos: string[]; botes: Record<string, number> },
   a: AnalistaRow,
   plugin: PluginAnalista,
   b: Borrador
@@ -142,7 +142,7 @@ async function guardar(
   if (viva) return { analista: a.clave, estado: "duplicada", detalle: b.pregunta };
 
   const narrativa = await redactar(a.nombre, b);
-  const niveles = ctx.prods.map((p) => calcularPayoff(p, ctx.tramosN, ctx.tasa, ctx.botes[p.clave] ?? 0));
+  const niveles = NIVELES.map((n) => calcularPayoff(ctx.escenario, n, ctx.botes[n] ?? 0, ctx.supuestos));
   const riesgo = b.riesgo_legal ?? plugin.riesgoLegal;
   const pregunta = (b.traducir && narrativa.pregunta) || b.pregunta;
   const titulo = (b.traducir && narrativa.titulo) || b.titulo;
@@ -171,7 +171,7 @@ async function guardar(
       riesgos: narrativa.riesgos,
       gancho_redes: narrativa.gancho_redes,
       ref_externa: b.ref_externa ?? null,
-      payoff: { niveles, tasa_cetes: ctx.tasa },
+      payoff: { niveles, tasa_cetes: ctx.escenario.fijas.cetes },
       producto_sugerido: b.producto_sugerido,
     })
     .select("id")

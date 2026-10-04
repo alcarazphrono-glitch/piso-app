@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { economiaPorUsuario, TramoCarry } from "@/lib/mesa/payoff";
+import { cargarEscenario } from "@/lib/economia/cargar";
+import { calcular, NIVELES, type Resultado } from "@/lib/economia/modelo";
 
 // Resumen de la consola financiera: la foto del negocio en una pantalla.
 // Todo sale de datos reales (calcular_exposicion_global, ciclos, mesa);
@@ -44,7 +45,7 @@ export default function ConsolaResumen() {
   const [ciclos, setCiclos] = useState<CicloActivo[]>([]);
   const [niveles, setNiveles] = useState<Nivel[]>([]);
   const [tasa, setTasa] = useState<number | null>(null);
-  const [tramos, setTramos] = useState<TramoCarry[]>([]);
+  const [eco, setEco] = useState<{ r: Resultado; supuestos: string[] } | null>(null);
   const [mesa, setMesa] = useState<Record<string, number>>({});
   const [cargando, setCargando] = useState(true);
 
@@ -60,11 +61,9 @@ export default function ConsolaResumen() {
         supabase.from("productos").select("clave, nombre, precio, gente_requerida, dias_resolucion, alpha_em").order("precio"),
         supabase.from("parametros_pricing").select("tasa_cetes_anual").maybeSingle(),
         supabase.from("mesa_propuestas").select("estado").in("estado", ["pendiente", "aceptada", "aprobada_riesgo"]),
-        supabase.from("producto_carry_tramos").select("producto_clave, orden, premio_hasta, carry_pct"),
+        cargarEscenario(supabase).catch(() => null),
       ]);
-      setTramos(
-        ((r6.data as TramoCarry[]) ?? []).map((t) => ({ ...t, premio_hasta: t.premio_hasta == null ? null : Number(t.premio_hasta), carry_pct: Number(t.carry_pct) }))
-      );
+      if (r6) setEco({ r: calcular(r6.escenario), supuestos: r6.supuestos });
       setExp(r1.data?.[0] ?? null);
       setCiclos((r2.data as unknown as CicloActivo[]) ?? []);
       setNiveles((r3.data as Nivel[]) ?? []);
@@ -139,49 +138,64 @@ export default function ConsolaResumen() {
       </section>
 
       <section>
-        <h2 className="mb-1 text-sm font-semibold text-neutral-700">Cuánto gana PISO por usuario</h2>
-        <p className="mb-2 text-xs text-neutral-500">
-          Ingreso = alpha_em sobre el rendimiento + carry sobre el premio. &quot;Al año&quot; supone que el usuario mantiene su dinero en el nivel
-          todo el año, un ciclo tras otro. Sin cuota de participación.
-        </p>
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <table className="w-full text-sm tabular-nums">
-            <thead className="text-xs text-neutral-400">
-              <tr className="text-right">
-                <th className="px-4 py-2 text-left font-normal">Nivel</th>
-                <th className="font-normal">Boleto</th>
-                <th className="font-normal">Por ciclo</th>
-                <th className="font-normal">Ciclos/año</th>
-                <th className="font-normal">Al año</th>
-                <th className="px-4 font-normal">% del depósito</th>
-              </tr>
-            </thead>
-            <tbody>
-              {niveles.map((n) => {
-                const e = economiaPorUsuario(
-                  { ...n, precio: Number(n.precio), alpha_em: n.alpha_em == null ? null : Number(n.alpha_em) },
-                  tramos,
-                  tasa == null ? null : { valor: Number(tasa), fuente: "parametros_pricing" }
-                );
-                return (
-                  <tr key={n.clave} className="border-t border-neutral-100 text-right">
-                    <td className="px-4 py-2 text-left font-medium">{n.nombre}</td>
-                    <td>{mxn(e.boleto)}</td>
-                    <td>${e.por_ciclo.toFixed(2)}</td>
-                    <td>{e.ciclos_por_ano}</td>
-                    <td className="font-semibold text-emerald-700">{mxn(e.por_ano)}</td>
-                    <td className="px-4">{e.pct_del_deposito_anual}%</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {(tasa == null || niveles.some((n) => n.alpha_em == null)) && (
-            <p className="border-t border-neutral-100 px-4 py-2 text-xs text-amber-700">
-              Calculado con supuestos donde falta el dato: CETES 10% y alpha_em 25% (acuerdos del proyecto).
-            </p>
-          )}
+        <div className="mb-1 flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold text-neutral-700">Cuánto gana PISO por usuario</h2>
+          <Link href="/consola/palancas" className="text-xs text-emerald-700 hover:underline">
+            Mover palancas →
+          </Link>
         </div>
+        <p className="mb-2 text-xs text-neutral-500">
+          Modelo de Finanzas (src/lib/economia): ingreso por rendimiento, carry, cuota y saldo, menos pagos, custodia e infra, al año.
+        </p>
+        {!eco ? (
+          <p className="rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-400">
+            Sin datos del modelo. ¿Ya corriste la migración 0014?
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+            <div className="grid grid-cols-2 gap-px bg-neutral-100 md:grid-cols-4">
+              {[
+                ["Ganancia por usuario al año", mxn(eco.r.contrib)],
+                ["LTV / CAC", isFinite(eco.r.ltvCac) ? `${eco.r.ltvCac.toFixed(1)}×` : "—"],
+                ["Recupera el CAC en", isFinite(eco.r.payback) && eco.r.payback < 600 ? `${eco.r.payback.toFixed(1)} meses` : "nunca"],
+                ["Utilidad al mes", mxn(eco.r.utilidadMes)],
+              ].map(([l, v]) => (
+                <div key={l} className="bg-white px-4 py-3">
+                  <p className="text-xs text-neutral-500">{l}</p>
+                  <p className="text-lg font-semibold tabular-nums">{v}</p>
+                </div>
+              ))}
+            </div>
+            <table className="w-full text-sm tabular-nums">
+              <thead className="text-xs text-neutral-400">
+                <tr className="text-right">
+                  <th className="px-4 py-2 text-left font-normal">Nivel</th>
+                  <th className="font-normal">Ciclos/año</th>
+                  <th className="font-normal">Premio en mano</th>
+                  <th className="font-normal">Ingreso/año</th>
+                  <th className="px-4 font-normal">Ganancia/año</th>
+                </tr>
+              </thead>
+              <tbody>
+                {NIVELES.map((n) => {
+                  const x = eco.r.niveles[n];
+                  return (
+                    <tr key={n} className="border-t border-neutral-100 text-right">
+                      <td className="px-4 py-2 text-left font-medium capitalize">{n}</td>
+                      <td>{x.ciclos.toFixed(1)}</td>
+                      <td>{mxn(x.premioEnMano)}</td>
+                      <td>{mxn(x.ingreso)}</td>
+                      <td className={`px-4 font-semibold ${x.contrib < 0 ? "text-red-600" : "text-emerald-700"}`}>{mxn(x.contrib)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {eco.supuestos.length > 0 && (
+              <p className="border-t border-neutral-100 px-4 py-2 text-xs text-amber-700">Supuestos: {eco.supuestos.join(" · ")}</p>
+            )}
+          </div>
+        )}
       </section>
 
       <section>

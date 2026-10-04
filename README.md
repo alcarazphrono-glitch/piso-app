@@ -657,12 +657,13 @@ páginas nuevas incluidas.
 
 ## Consola financiera (`/consola`) y mesa de derivados
 
-`/consola` es una herramienta aparte de `/admin` (mismo login de operador): Resumen, Mesa de derivados, Riesgo, Reserva, Niveles y Ciclos.
+`/consola` es una herramienta aparte de `/admin` (mismo login de operador): Resumen, Mesa de derivados, Palancas, Riesgo, Reserva, Niveles y Ciclos.
 
 Flujo de la mesa: **analista (agente) propone → mesa (humano) acepta → Riesgo aprueba con límite → se publica** como evento + ciclo en la app. Migración `0012_mesa_derivados.sql`.
 
 - **Analistas como plugins**: `src/lib/mesa/analistas/`, un archivo por mercado + `index.ts`. Hoy: Tasas Banxico (Beta-Binomial), Inflación INPC (caminata aleatoria normal), Tipo de cambio FIX (browniano geométrico), Deportes globales (momios, riesgo legal alto), Cripto (volatilidad implícita de opciones Deribit) y Tendencias (precio de mercados de predicción, Polymarket). Cada hallazgo trae un gancho para redes. Para agregar un mercado: archivo nuevo, una línea en `index.ts` y su fila en `mesa_analistas`. La probabilidad la calcula código (`estocastico.ts`); Claude solo redacta la lectura (`narrativa.ts`).
-- **Payoff**: `payoff.ts`, punto único de la fórmula en TS: premio = rendimiento del pool (menos alpha_em y carry) + bote. PISO nunca pone de su bolsa. La consola muestra cuánto gana PISO por usuario.
+- **Payoff**: `payoff.ts` no tiene fórmula propia; adapta `premioCiclo()` de `src/lib/economia/modelo.ts` (el modelo único de Finanzas, migración 0014). premio = rendimiento del pool (menos alphas y carry) + cuota al premio + bote. PISO nunca pone de su bolsa.
+- **Palancas** (`/consola/palancas`): mueve cuota, días y N por nivel, reparto, CAC, churn, umbrales y costos fijos; muestra `calcular()` en vivo (LTV/CAC, payback, breakeven, premio en mano) y guarda en `economia_parametros`, `productos` y `parametros_pricing`. El Resumen y la Mesa leen esos mismos valores.
 - **Cuándo corren**: L-V 7:00 CDMX por Vercel Cron (`vercel.json` → `GET /api/mesa/correr`), o con el botón "Correr analistas".
 - **Variables (solo servidor)**: `SUPABASE_SERVICE_ROLE_KEY`, `BANXICO_TOKEN`, `INEGI_TOKEN`, `ODDS_API_KEY`, `ANTHROPIC_API_KEY`, `CRON_SECRET`. Ver `.env.example`. Sin token, ese analista reporta "sin datos" y no propone nada.
 - **Analista de tasas**: necesita la fecha de la próxima decisión de Banxico (pestaña Analistas).

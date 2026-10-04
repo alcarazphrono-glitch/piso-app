@@ -13,6 +13,7 @@ import { supabase } from "@/lib/supabase";
 const SECCIONES = [
   { href: "/consola", label: "Resumen" },
   { href: "/consola/mesa", label: "Mesa de derivados" },
+  { href: "/consola/palancas", label: "Palancas" },
   { href: "/consola/riesgo", label: "Riesgo" },
   { href: "/consola/reserva", label: "Reserva" },
   { href: "/consola/niveles", label: "Niveles" },
