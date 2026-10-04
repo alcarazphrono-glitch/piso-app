@@ -92,6 +92,17 @@ export async function obtenerCiclo(id: string): Promise<CicloConProducto | null>
   return { ...(ciclo as Ciclo), producto: producto as Producto, evento_nombre: (evento as { nombre: string })?.nombre ?? (ciclo as Ciclo).evento_id };
 }
 
+/**
+ * Cuota por evento del nivel (MXN, IVA incluido; migración 0014). Hoy es 0.
+ * Si la base todavía no tiene la columna, también regresa 0 para no romper
+ * la pantalla de compra.
+ */
+export async function obtenerCuotaEvento(productoClave: string): Promise<number> {
+  const { data, error } = await supabase.from("productos").select("cuota_evento").eq("clave", productoClave).maybeSingle();
+  if (error || !data) return 0;
+  return Number((data as { cuota_evento: number | null }).cuota_evento ?? 0);
+}
+
 /** Reemplaza cualquier insert directo del cliente a `boletos`. */
 export async function comprarBoleto(cicloId: string, respuesta: "si" | "no"): Promise<Boleto> {
   const { data, error } = await supabase.rpc("comprar_boleto", { p_ciclo_id: cicloId, p_respuesta: respuesta });

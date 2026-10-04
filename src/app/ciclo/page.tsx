@@ -6,7 +6,7 @@ import { mensajeParaUsuario } from "@/lib/errores";
 import { supabase } from "@/lib/supabase";
 import { posthog } from "@/lib/posthog";
 import { obtenerRacha } from "@/lib/demo";
-import { obtenerCiclo, obtenerPremioCiclo, PremioCiclo, comprarBoleto, obtenerMiBoletoEnCiclo, calcularTicketPromedioHistorico, CicloConProducto } from "@/lib/boletos";
+import { obtenerCiclo, obtenerPremioCiclo, obtenerCuotaEvento, PremioCiclo, comprarBoleto, obtenerMiBoletoEnCiclo, calcularTicketPromedioHistorico, CicloConProducto } from "@/lib/boletos";
 import { Respuesta } from "@/types";
 import { Screen, BackChevron, RachaBadge, H1, PrimaryButton, ShieldIcon, CalendarIcon } from "@/components/ui";
 
@@ -32,6 +32,7 @@ function CicloPageContenido() {
   const [ciclo, setCiclo] = useState<CicloConProducto | null | undefined>(undefined);
   const [ticketPromedio, setTicketPromedio] = useState<number | null>(null);
   const [premio, setPremio] = useState<PremioCiclo | null>(null);
+  const [cuota, setCuota] = useState(0);
   const [confirmaMontoMayor, setConfirmaMontoMayor] = useState(false);
   const [errorCompra, setErrorCompra] = useState<string | null>(null);
 
@@ -63,6 +64,7 @@ function CicloPageContenido() {
       ]);
       setPremio(p);
       setCiclo(c);
+      if (c) setCuota(await obtenerCuotaEvento(c.producto.clave));
       setRacha(r);
       setTicketPromedio(promedio);
     });
@@ -161,6 +163,15 @@ function CicloPageContenido() {
             <ShieldIcon className="h-3.5 w-3.5 text-mint" strokeWidth={1.9} />
           </span>
         </div>
+        {cuota > 0 && (
+          <div className="flex items-center justify-between border-t border-line py-2">
+            <span className="text-sm text-ink-soft">Cuota de participación</span>
+            <span className="text-right text-sm font-medium">
+              <span className="block font-display text-base font-semibold">${cuota.toLocaleString("es-MX")}</span>
+              <span className="block text-xs text-ink-soft">No regresa, salvo que el nivel no se llene</span>
+            </span>
+          </div>
+        )}
         <div className="flex items-center justify-between border-t border-line py-2">
           <span className="text-sm text-ink-soft">Si el nivel se llena</span>
           <span className="text-right text-sm font-medium">

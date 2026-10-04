@@ -678,3 +678,12 @@ La 0011 se puede volver a correr sin errores (políticas con `drop policy if exi
 **Nota para el build de Capacitor:** la mesa de derivados (PR #3) agrega `src/app/api/...`. Las rutas API no existen en un export estático, así que el build de la app nativa tiene que excluir /admin y /api (la app de la tienda es solo la parte de usuario).
 
 **Premio = rendimiento del pool + bote (decisión de Beto, 3-oct-2026):** `calcular_premio_ciclo()` ya no divide entre la probabilidad (1/p). El premio base es N × precio × (e^(r·días/365) − 1) × (1 − alpha_em), menos el carry del tramo; si se llenan a la vez la tasa y alpha_em, usa esos valores, y si no, los acuerdos (r 10%, alpha_em 25%). PISO nunca pone dinero propio, salvo el bono de bienvenida (subsidio topado). Con los supuestos actuales: Entrada $9,066, Crecimiento $9,780 y Elite $4,886 por ciclo, más el bote.
+
+## Actualización 4-oct-2026 — El premio usa las palancas de Finanzas (migración 0015)
+
+Corre **después de 0014** (PR #4). Orden en Supabase: 0011 → 0012 → 0013 → 0014 → 0015.
+
+- `calcular_premio_ciclo()` usa la misma fórmula que `premioCiclo()` en `src/lib/economia/modelo.ts`: `bruto = rendimiento × (1 − alpha_em − alpha_c1) + cuotas/(1+IVA) × cuota_al_premio`, con la tasa CETES menos `spread_reporto`, y `premio = bruto × (1 − carry) + bote`. Con los valores sembrados en 0014 el premio no cambia.
+- `comprar_boleto()` cobra `productos.cuota_evento` solo si es mayor a 0 (hoy es 0). La cuota queda en `boletos.cuota` y en el ledger como "Cuota de participación". No regresa al resolver el ciclo; sí regresa si el ciclo se cancela por no llenarse.
+- Las cuotas del premio salen de lo que ya pagaron los boletos más la cuota vigente por cada lugar libre, así que un cambio de cuota a medio ciclo nunca promete dinero que no entró.
+- La pantalla de compra muestra la cuota solo cuando es mayor a 0.
