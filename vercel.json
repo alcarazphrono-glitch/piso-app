@@ -1,0 +1,3 @@
+{
+  "crons": [{ "path": "/api/mesa/correr", "schedule": "0 13 * * 1-5" }]
+}

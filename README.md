@@ -687,3 +687,17 @@ Corre **después de 0014** (PR #4). Orden en Supabase: 0011 → 0012 → 0013 �
 - `comprar_boleto()` cobra `productos.cuota_evento` solo si es mayor a 0 (hoy es 0). La cuota queda en `boletos.cuota` y en el ledger como "Cuota de participación". No regresa al resolver el ciclo; sí regresa si el ciclo se cancela por no llenarse.
 - Las cuotas del premio salen de lo que ya pagaron los boletos más la cuota vigente por cada lugar libre, así que un cambio de cuota a medio ciclo nunca promete dinero que no entró.
 - La pantalla de compra muestra la cuota solo cuando es mayor a 0.
+
+## Consola financiera (`/consola`) y mesa de derivados
+
+`/consola` es una herramienta aparte de `/admin` (mismo login de operador): Resumen, Mesa de derivados, Palancas, Riesgo, Reserva, Niveles y Ciclos.
+
+Flujo de la mesa: **analista (agente) propone → mesa (humano) acepta → Riesgo aprueba con límite → se publica** como evento + ciclo en la app. Migración `0012_mesa_derivados.sql`.
+
+- **Analistas como plugins**: `src/lib/mesa/analistas/`, un archivo por mercado + `index.ts`. Hoy: Tasas Banxico (Beta-Binomial), Inflación INPC (caminata aleatoria normal), Tipo de cambio FIX (browniano geométrico), Deportes globales (momios, riesgo legal alto), Cripto (volatilidad implícita de opciones Deribit) y Tendencias (precio de mercados de predicción, Polymarket). Cada hallazgo trae un gancho para redes. Para agregar un mercado: archivo nuevo, una línea en `index.ts` y su fila en `mesa_analistas`. La probabilidad la calcula código (`estocastico.ts`); Claude solo redacta la lectura (`narrativa.ts`).
+- **Payoff**: `payoff.ts` no tiene fórmula propia; adapta `premioCiclo()` de `src/lib/economia/modelo.ts` (el modelo único de Finanzas, migración 0014). premio = rendimiento del pool (menos alphas y carry) + cuota al premio + bote. PISO nunca pone de su bolsa.
+- **Palancas** (`/consola/palancas`): mueve cuota, días y N por nivel, reparto, CAC, churn, umbrales y costos fijos; muestra `calcular()` en vivo (LTV/CAC, payback, breakeven, premio en mano) y guarda en `economia_parametros`, `productos` y `parametros_pricing`. El Resumen y la Mesa leen esos mismos valores.
+- **Cuándo corren**: L-V 7:00 CDMX por Vercel Cron (`vercel.json` → `GET /api/mesa/correr`), o con el botón "Correr analistas".
+- **Variables (solo servidor)**: `SUPABASE_SERVICE_ROLE_KEY`, `BANXICO_TOKEN`, `INEGI_TOKEN`, `ODDS_API_KEY`, `ANTHROPIC_API_KEY`, `CRON_SECRET`. Ver `.env.example`. Sin token, ese analista reporta "sin datos" y no propone nada.
+- **Analista de tasas**: necesita la fecha de la próxima decisión de Banxico (pestaña Analistas).
+- **Reglas duras en la base**: rechazar exige motivo; Riesgo exige límite y se niega con el kill switch global activo; publicar exige que el evento se resuelva después de que cierre la venta del nivel (y a más tardar 7 días después) que el copy no use términos prohibidos y, si el riesgo legal es alto, que el operador lo acepte explícitamente. Bitácora append-only. `mesa_config.cuatro_ojos` separa a quien acepta de quien aprueba Riesgo.
