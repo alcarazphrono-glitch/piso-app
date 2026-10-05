@@ -57,3 +57,22 @@ export function identifyUsuario(userId: string, props: Record<string, unknown> =
 }
 
 export { posthog };
+
+// -----------------------------------------------------------------------
+// Lista de espera (/unete). Funnel separado del de la app porque quien
+// llega aquí todavía no es usuario: Vista → Empieza a escribir → Registro
+// → Comparte. Las UTM van en cada evento para cortar conversión por
+// campaña en PostHog sin depender de $initial_utm_*.
+// -----------------------------------------------------------------------
+
+export type ListaEsperaEvento =
+  | "lista_espera_vista"
+  | "lista_espera_inicio_form"
+  | "lista_espera_registro"
+  | "lista_espera_error"
+  | "lista_espera_compartir";
+
+export function trackListaEspera(evento: ListaEsperaEvento, props: Record<string, unknown> = {}) {
+  if (typeof window === "undefined") return;
+  posthog.capture(evento, { ...props, timestamp: new Date().toISOString() });
+}
