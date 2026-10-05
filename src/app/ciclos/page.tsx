@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { mensajeParaUsuario } from "@/lib/errores";
 import { supabase } from "@/lib/supabase";
-import { obtenerCiclosActivos, CicloConProducto } from "@/lib/boletos";
+import { obtenerCiclosActivos, obtenerPremioCiclo, CicloConProducto, PremioCiclo } from "@/lib/boletos";
 import { Screen, BackChevron, H1, ShieldIcon } from "@/components/ui";
 
 // Lista de ciclos activos del sistema de boletos por nivel (spec de
@@ -20,6 +21,7 @@ const NIVEL_ORDEN: Record<string, number> = { entrada: 0, crecimiento: 1, elite:
 export default function CiclosPage() {
   const router = useRouter();
   const [ciclos, setCiclos] = useState<CicloConProducto[]>([]);
+  const [premios, setPremios] = useState<Record<string, PremioCiclo | null>>({});
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,9 +32,12 @@ export default function CiclosPage() {
         return;
       }
       try {
-        setCiclos(await obtenerCiclosActivos());
+        const lista = await obtenerCiclosActivos();
+        setCiclos(lista);
+        const montos = await Promise.all(lista.map((c) => obtenerPremioCiclo(c.id)));
+        setPremios(Object.fromEntries(lista.map((c, i) => [c.id, montos[i]])));
       } catch (e) {
-        setError(e instanceof Error ? e.message : "No se pudieron cargar los ciclos.");
+        setError(mensajeParaUsuario(e, "No se pudieron cargar los niveles."));
       } finally {
         setCargando(false);
       }
@@ -52,7 +57,7 @@ export default function CiclosPage() {
       </div>
       <p className="mt-3 text-[13.5px] leading-relaxed text-ink-soft">
         Elige un nivel, responde sí o no a un evento real. Cuando el nivel se llena, se sortea un premio entre
-        quienes acertaron -- y tu depósito regresa completo, ganes o no.
+        quienes acertaron; si nadie acierta, el premio se acumula al siguiente ciclo. Tu depósito regresa completo, ganes o no.
       </p>
 
       <div className="mt-7 flex flex-col gap-3.5">
@@ -67,7 +72,7 @@ export default function CiclosPage() {
           return (
             <Link
               key={c.id}
-              href={`/ciclo/${c.id}`}
+              href={`/ciclo?id=${c.id}`}
               className="block rounded-2xl border border-line bg-surface p-5"
             >
               <div className="flex items-center justify-between">
@@ -77,13 +82,26 @@ export default function CiclosPage() {
                 </span>
               </div>
               <p className="mt-1 text-xs text-ink-soft">{c.evento_nombre}</p>
+              {premios[c.id] != null && (
+                <>
+                  <p className="mt-3 font-display text-[22px] font-bold text-mint">
+                    ${premios[c.id]!.premio.toLocaleString("es-MX")}
+                    <span className="ml-1.5 font-body text-xs font-medium text-ink-soft">premio en juego</span>
+                  </p>
+                  {premios[c.id]!.bote > 0 && (
+                    <p className="mt-1 text-xs font-medium text-ink-soft">
+                      Incluye ${premios[c.id]!.bote.toLocaleString("es-MX")} de bote acumulado
+                    </p>
+                  )}
+                </>
+              )}
 
               <div className="mt-4 flex items-center gap-3">
                 <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-line">
                   <div className="h-full rounded-full bg-mint" style={{ width: `${pct}%` }} />
                 </div>
                 <span className="shrink-0 text-[12.5px] font-medium text-ink-soft">
-                  {c.estado === "lleno" ? "Lleno -- por resolverse" : `Faltan ${faltan.toLocaleString("es-MX")} lugares`}
+                  {c.estado === "lleno" ? "Lleno, por resolverse" : `Faltan ${faltan.toLocaleString("es-MX")} lugares`}
                 </span>
               </div>
             </Link>

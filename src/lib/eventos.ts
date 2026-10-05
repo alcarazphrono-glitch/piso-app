@@ -36,7 +36,9 @@ export async function obtenerEventos(): Promise<Evento[]> {
   const { data, error } = await supabase
     .from("eventos")
     .select(COLUMNAS)
-    .order("creado_en", { ascending: true });
+    // `eventos` no tiene columna creado_en -- ordenar por ella tronaba la
+    // consulta (400) y la lista de eventos salía vacía.
+    .order("id", { ascending: true });
   if (error) throw error;
   return (data as EventoRow[]).map(mapearEvento);
 }

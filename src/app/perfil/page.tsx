@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { obtenerPerfil, obtenerBalance } from "@/lib/demo";
 import { trackFunnel } from "@/lib/posthog";
+import { mensajeParaUsuario } from "@/lib/errores";
 import { PISOS, PisoNombre } from "@/types";
 import { Screen, BackChevron, H1, Card, Mono, LockIcon } from "@/components/ui";
 
@@ -19,6 +20,9 @@ export default function PerfilPage() {
   const [piso, setPiso] = useState<PisoNombre | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [confirmandoBorrado, setConfirmandoBorrado] = useState(false);
+  const [borrando, setBorrando] = useState(false);
+  const [errorBorrado, setErrorBorrado] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
@@ -33,6 +37,22 @@ export default function PerfilPage() {
       setCargando(false);
     });
   }, [router]);
+
+  // Requisito del App Store (5.1.1(v)): borrar la cuenta desde la app.
+  // eliminar_mi_cuenta() anonimiza (migración 0011) -- la historia
+  // financiera se conserva sin datos personales, como pide Legal.
+  async function eliminarCuenta() {
+    setBorrando(true);
+    setErrorBorrado(null);
+    const { error } = await supabase.rpc("eliminar_mi_cuenta");
+    if (error) {
+      setBorrando(false);
+      setErrorBorrado(mensajeParaUsuario(error, "No se pudo eliminar tu cuenta. Intenta de nuevo."));
+      return;
+    }
+    await supabase.auth.signOut();
+    router.replace("/");
+  }
 
   function onClicPisoBloqueado(nombre: string) {
     trackFunnel("quiere_subir_piso", { piso_deseado: nombre });
@@ -81,6 +101,39 @@ export default function PerfilPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="mt-12 border-t border-line pt-6">
+        {!confirmandoBorrado ? (
+          <button onClick={() => setConfirmandoBorrado(true)} className="text-sm text-ink-soft underline underline-offset-2">
+            Eliminar mi cuenta
+          </button>
+        ) : (
+          <div className="rounded-2xl border border-line bg-surface p-4">
+            <p className="text-sm font-medium">¿Eliminar tu cuenta?</p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-soft">
+              Borramos tu correo y tus datos personales y ya no podrás entrar. Por ley guardamos el historial de
+              movimientos sin tu nombre. Esto no se puede deshacer.
+            </p>
+            {errorBorrado && <p className="mt-3 text-sm text-red-500">{errorBorrado}</p>}
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={() => setConfirmandoBorrado(false)}
+                disabled={borrando}
+                className="flex-1 rounded-card border border-line py-3 text-sm font-semibold text-ink-soft"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={eliminarCuenta}
+                disabled={borrando}
+                className="flex-1 rounded-card bg-red-500/90 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {borrando ? "Eliminando…" : "Sí, eliminar"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </Screen>
   );

@@ -97,11 +97,11 @@ export default function AdminProductosPage() {
       {mensaje && <div className="mb-4 rounded-md border border-neutral-200 bg-white px-4 py-2.5 text-sm">{mensaje}</div>}
 
       <div className="mb-4 rounded-lg border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
-        <p className="font-medium">alpha_em (comisión de PISO en el modelo de interés) sigue vacío por default.</p>
+        <p className="font-medium">Premio = rendimiento del pool + bote acumulado (decisión 3-oct-2026).</p>
         <p className="mt-1 text-xs text-amber-700">
-          Mientras esté vacío, calcular_premio_ciclo() usa el "premio_estatico" de la tabla de Finanzas (motor
-          "estatico") -- en cuanto se llena aquí (y tasa_cetes_anual en Configuración), el sistema pasa solo al
-          motor "real" con interés compuesto continuo.
+          calcular_premio_ciclo() usa N × precio × (e^(r·días/365) − 1) × (1 − alpha_em), menos el carry del tramo.
+          Mientras alpha_em (aquí) o tasa_cetes_anual (Configuración) estén vacíos, usa los acuerdos vigentes:
+          alpha_em 25% y r 10% (motor &quot;pool_supuestos&quot;). El premio estático ya no se usa.
         </p>
       </div>
 
@@ -122,10 +122,10 @@ export default function AdminProductosPage() {
               <Campo label="Precio del boleto (MXN)"><input name="precio" type="number" defaultValue={p.precio} className={inputClass} /></Campo>
               <Campo label="Gente requerida (N, estimado)"><input name="gente_requerida" type="number" defaultValue={p.gente_requerida} className={inputClass} /></Campo>
               <Campo label="Días de resolución (estimado)"><input name="dias_resolucion" type="number" defaultValue={p.dias_resolucion} className={inputClass} /></Campo>
-              <Campo label="alpha_em % (vacío = motor estático)">
+              <Campo label="alpha_em % (vacío = 25%)">
                 <input name="alpha_em" type="number" step="0.01" defaultValue={p.alpha_em != null ? p.alpha_em * 100 : ""} placeholder="pendiente" className={inputClass} />
               </Campo>
-              <Campo label="Premio estático (tabla de Finanzas)"><input name="premio_estatico" type="number" defaultValue={p.premio_estatico} className={inputClass} /></Campo>
+              <Campo label="Premio estático (ya no se usa)"><input name="premio_estatico" type="number" defaultValue={p.premio_estatico} className={inputClass} /></Campo>
             </div>
             <button type="submit" className="mt-3 rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium">
               Guardar

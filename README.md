@@ -654,3 +654,50 @@ páginas nuevas incluidas.
 
 ---
 *PISO — MVP del loop · Agosto-Septiembre 2026 · Confidencial*
+
+---
+
+## Actualización 3-oct-2026 — Infraestructura que pidió Legal (migración 0011)
+
+**`supabase/migrations/0011_legal_auditoria_sorteo_verificable.sql`** (correr después de 0010):
+
+- **Ledger inmutable:** `ledger_movimientos` rechaza UPDATE, DELETE y TRUNCATE, también desde el SQL Editor. Una corrección se registra como un movimiento contrario. Borrar un usuario ya no borra en cascada sus movimientos ni sus boletos; la baja se hace anonimizando.
+- **Auditoría:** tabla `auditoria`, append-only, que guarda quién, qué y cuándo, con el antes y el después de cada cambio en las tablas que se editan desde /admin (eventos, productos, parámetros, operadores, contenido, reserva, referidos, tratamientos).
+- **Consentimientos:** `registrar_consentimiento(documento, version)` guarda qué términos, aviso de privacidad o bases del sorteo aceptó cada usuario. La IP y el user agent se leen de los headers de la sesión. Todavía faltan los documentos y la UI que los muestre.
+- **Eliminar cuenta:** `eliminar_mi_cuenta()` + botón en /perfil (requisito del App Store, guía 5.1.1(v)). Anonimiza: cambia el correo por uno inválido, borra la contraseña, las identidades y las sesiones, y conserva el ledger y los boletos sin datos personales. Si la cuenta tiene boletos activos, se rechaza.
+- **Sorteo verificable (commit-reveal):** sustituye el `order by random()` de `resolver_ciclo()`. Cuando un ciclo se llena, se publica en `sorteos` el hash de una semilla secreta junto con la lista de participantes. Al resolver se revela la semilla, y cualquiera puede comprobar que el ganador salió justo con `verificar_sorteo(ciclo_id)`. La fórmula está documentada en la migración.
+
+Se probó contra Postgres 16 con PostgREST, como usuario normal y como operador. La auditoría registra los cambios de admin. Un usuario no puede comprometer un sorteo antes de tiempo (permiso denegado). La semilla no se puede leer antes de resolver. El ganador recalculado coincide con el pagado y el hash se valida. UPDATE y DELETE sobre el ledger se rechazan, y la integridad de capital da 0 violaciones. La cadena completa schema.sql → 0011 corre limpia sobre una base vacía.
+
+La 0011 se puede volver a correr sin errores (políticas con `drop policy if exists`).
+
+**App nativa (Capacitor):** `/ciclo` y `/evento` ahora usan `?id=` en vez de rutas dinámicas, y `CAPACITOR_BUILD=1 npm run build` genera `out/` como sitio estático. El build de Vercel no cambia y los links viejos redirigen. Ver `/mnt/project-files/piso-app/app-store-plan.md`.
+
+**Bote acumulado (0011, sección 6; decisión de Beto, 3-oct-2026):** si nadie acierta, el premio base del ciclo entra al bote de su nivel (`bote_movimientos`, inmutable; `botes` es la caché). El siguiente ciclo juega por base + bote. Al llegar a `productos.bote_max_ciclos` ciclos seguidos sin acertante (3 por default), el premio se sortea entre todos los participantes, para que el premio siempre se entregue. `calcular_premio_ciclo()` es el único lugar donde se calcula el premio (base + bote), y la exposición global ya lo incluye. Home ahora solo ofrece Boletos.
+
+**Nota para el build de Capacitor:** la mesa de derivados (PR #3) agrega `src/app/api/...`. Las rutas API no existen en un export estático, así que el build de la app nativa tiene que excluir /admin y /api (la app de la tienda es solo la parte de usuario).
+
+**Premio = rendimiento del pool + bote (decisión de Beto, 3-oct-2026):** `calcular_premio_ciclo()` ya no divide entre la probabilidad (1/p). El premio base es N × precio × (e^(r·días/365) − 1) × (1 − alpha_em), menos el carry del tramo; si se llenan a la vez la tasa y alpha_em, usa esos valores, y si no, los acuerdos (r 10%, alpha_em 25%). PISO nunca pone dinero propio, salvo el bono de bienvenida (subsidio topado). Con los supuestos actuales: Entrada $9,066, Crecimiento $9,780 y Elite $4,886 por ciclo, más el bote.
+
+## Actualización 4-oct-2026 — El premio usa las palancas de Finanzas (migración 0015)
+
+Corre **después de 0014** (PR #4). Orden en Supabase: 0011 → 0012 → 0013 → 0014 → 0015.
+
+- `calcular_premio_ciclo()` usa la misma fórmula que `premioCiclo()` en `src/lib/economia/modelo.ts`: `bruto = rendimiento × (1 − alpha_em − alpha_c1) + cuotas/(1+IVA) × cuota_al_premio`, con la tasa CETES menos `spread_reporto`, y `premio = bruto × (1 − carry) + bote`. Con los valores sembrados en 0014 el premio no cambia.
+- `comprar_boleto()` cobra `productos.cuota_evento` solo si es mayor a 0 (hoy es 0). La cuota queda en `boletos.cuota` y en el ledger como "Cuota de participación". No regresa al resolver el ciclo; sí regresa si el ciclo se cancela por no llenarse.
+- Las cuotas del premio salen de lo que ya pagaron los boletos más la cuota vigente por cada lugar libre, así que un cambio de cuota a medio ciclo nunca promete dinero que no entró.
+- La pantalla de compra muestra la cuota solo cuando es mayor a 0.
+
+## Consola financiera (`/consola`) y mesa de derivados
+
+`/consola` es una herramienta aparte de `/admin` (mismo login de operador): Resumen, Mesa de derivados, Palancas, Riesgo, Reserva, Niveles y Ciclos.
+
+Flujo de la mesa: **analista (agente) propone → mesa (humano) acepta → Riesgo aprueba con límite → se publica** como evento + ciclo en la app. Migración `0012_mesa_derivados.sql`.
+
+- **Analistas como plugins**: `src/lib/mesa/analistas/`, un archivo por mercado + `index.ts`. Hoy: Tasas Banxico (Beta-Binomial), Inflación INPC (caminata aleatoria normal), Tipo de cambio FIX (browniano geométrico), Deportes globales (momios, riesgo legal alto), Cripto (volatilidad implícita de opciones Deribit) y Tendencias (precio de mercados de predicción, Polymarket). Cada hallazgo trae un gancho para redes. Para agregar un mercado: archivo nuevo, una línea en `index.ts` y su fila en `mesa_analistas`. La probabilidad la calcula código (`estocastico.ts`); Claude solo redacta la lectura (`narrativa.ts`).
+- **Payoff**: `payoff.ts` no tiene fórmula propia; adapta `premioCiclo()` de `src/lib/economia/modelo.ts` (el modelo único de Finanzas, migración 0014). premio = rendimiento del pool (menos alphas y carry) + cuota al premio + bote. PISO nunca pone de su bolsa.
+- **Palancas** (`/consola/palancas`): mueve cuota, días y N por nivel, reparto, CAC, churn, umbrales y costos fijos; muestra `calcular()` en vivo (LTV/CAC, payback, breakeven, premio en mano) y guarda en `economia_parametros`, `productos` y `parametros_pricing`. El Resumen y la Mesa leen esos mismos valores.
+- **Cuándo corren**: L-V 7:00 CDMX por Vercel Cron (`vercel.json` → `GET /api/mesa/correr`), o con el botón "Correr analistas".
+- **Variables (solo servidor)**: `SUPABASE_SERVICE_ROLE_KEY`, `BANXICO_TOKEN`, `INEGI_TOKEN`, `ODDS_API_KEY`, `ANTHROPIC_API_KEY`, `CRON_SECRET`. Ver `.env.example`. Sin token, ese analista reporta "sin datos" y no propone nada.
+- **Analista de tasas**: necesita la fecha de la próxima decisión de Banxico (pestaña Analistas).
+- **Reglas duras en la base**: rechazar exige motivo; Riesgo exige límite y se niega con el kill switch global activo; publicar exige que el evento se resuelva después de que cierre la venta del nivel (y a más tardar 7 días después) que el copy no use términos prohibidos y, si el riesgo legal es alto, que el operador lo acepte explícitamente. Bitácora append-only. `mesa_config.cuatro_ojos` separa a quien acepta de quien aprueba Riesgo.

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { mensajeParaUsuario } from "@/lib/errores";
 import { supabase } from "@/lib/supabase";
 import { trackFunnel } from "@/lib/posthog";
 import { obtenerRacha } from "@/lib/demo";
@@ -28,8 +29,11 @@ import {
 // guardar la posición, así que se agrega aquí con el mismo lenguaje
 // visual, antes de la tarjeta de números.
 
-export default function EventoPage() {
-  const params = useParams<{ id: string }>();
+function EventoPageContenido() {
+  // ?id= en vez de /[id]: con rutas dinámicas la app no se puede exportar
+  // como sitio estático, que es lo que empaqueta Capacitor para iOS/Android.
+  const id = useSearchParams().get("id");
+  const params = { id: id ?? undefined };
   const router = useRouter();
   const [autenticado, setAutenticado] = useState(false);
   const [racha, setRacha] = useState(0);
@@ -39,6 +43,7 @@ export default function EventoPage() {
   const [evento, setEvento] = useState<Evento | null | undefined>(undefined); // undefined = cargando
   const [premio, setPremio] = useState(0);
   const [ticket, setTicket] = useState(TICKET_DEMO_MXN);
+  const [errorConfirmar, setErrorConfirmar] = useState<string | null>(null);
 
   useEffect(() => {
     obtenerTicketDemo().then(setTicket);
@@ -100,6 +105,7 @@ export default function EventoPage() {
   async function confirmar() {
     if (!evento || !respuesta) return;
     setConfirmando(true);
+    setErrorConfirmar(null);
 
     const { data: sess } = await supabase.auth.getSession();
     const user = sess.session?.user;
@@ -112,9 +118,9 @@ export default function EventoPage() {
     try {
       const posicion = await confirmarPosicion(evento.id, respuesta);
       posicionId = posicion.id;
-    } catch {
+    } catch (e) {
       setConfirmando(false);
-      alert("No se pudo confirmar tu posición. Intenta de nuevo.");
+      setErrorConfirmar(mensajeParaUsuario(e, "No se pudo confirmar tu entrada. Intenta de nuevo."));
       return;
     }
 
@@ -210,10 +216,20 @@ export default function EventoPage() {
         </p>
       </div>
 
+      {errorConfirmar && <p className="mt-3 text-sm text-red-500">{errorConfirmar}</p>}
+
       <PrimaryButton className="mt-6" onClick={confirmar} disabled={!respuesta || confirmando}>
         {confirmando ? "Confirmando…" : "Confirmar mi entrada"}
       </PrimaryButton>
       <p className="mt-3 text-center text-xs text-faint">Toma 15 segundos. Puedes retirar cuando quieras.</p>
     </Screen>
+  );
+}
+
+export default function EventoPage() {
+  return (
+    <Suspense fallback={null}>
+      <EventoPageContenido />
+    </Suspense>
   );
 }

@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { mensajeParaUsuario } from "@/lib/errores";
 import { supabase } from "@/lib/supabase";
 import { trackFunnel, identifyUsuario } from "@/lib/posthog";
 import { Screen, Wordmark, H1, Lede, PrimaryButton } from "@/components/ui";
@@ -42,7 +43,7 @@ export default function AuthPage() {
       }
       router.replace("/home");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Algo salió mal. Intenta de nuevo.");
+      setError(mensajeParaUsuario(err));
     } finally {
       setCargando(false);
     }

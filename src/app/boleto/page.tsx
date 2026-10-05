@@ -3,8 +3,8 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { obtenerBoleto, obtenerCiclo, Boleto, CicloConProducto } from "@/lib/boletos";
-import { Screen, Wordmark, H1, Lede, PrimaryButton, Card, Mono } from "@/components/ui";
+import { obtenerBoleto, obtenerCiclo, obtenerPremioCiclo, Boleto, CicloConProducto, PremioCiclo } from "@/lib/boletos";
+import { Screen, Wordmark, BackChevron, H1, Lede, PrimaryButton, SecondaryButton, Card, Mono } from "@/components/ui";
 
 // Pantalla de "tu boleto está adentro" -- a diferencia de /posicion, aquí
 // no hay un botón de "Simular resultado ahora": resolver_ciclo() es
@@ -19,13 +19,16 @@ function BoletoContenido() {
   const boletoId = params.get("id");
   const [boleto, setBoleto] = useState<Boleto | null>(null);
   const [ciclo, setCiclo] = useState<CicloConProducto | null>(null);
+  const [premio, setPremio] = useState<PremioCiclo | null>(null);
 
   async function cargar() {
     if (!boletoId) return;
     const b = await obtenerBoleto(boletoId);
     if (!b) return;
     setBoleto(b);
-    setCiclo(await obtenerCiclo(b.ciclo_id));
+    const [c, p] = await Promise.all([obtenerCiclo(b.ciclo_id), obtenerPremioCiclo(b.ciclo_id)]);
+    setCiclo(c);
+    setPremio(p);
   }
 
   useEffect(() => {
@@ -72,7 +75,7 @@ function BoletoContenido() {
   return (
     <Screen>
       <div className="flex items-center justify-between pt-2">
-        <Wordmark />
+        <BackChevron onClick={() => router.push("/home")} />
         <span className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12.5px] font-medium text-ink-soft">
           Boleto activo
         </span>
@@ -82,7 +85,7 @@ function BoletoContenido() {
         <H1>{ciclo.producto.nombre}</H1>
         <Lede className="mt-2 mb-6">
           {ciclo.estado === "lleno"
-            ? "El nivel ya se llenó -- en espera de que se confirme el resultado real."
+            ? "El nivel ya se llenó. Falta que se confirme el resultado real."
             : "Tu boleto está adentro. Esto es lo que respondiste:"}
         </Lede>
 
@@ -91,10 +94,16 @@ function BoletoContenido() {
             <span className="text-sm text-ink-soft">Tu respuesta</span>
             <span className="text-sm font-medium">{boleto.respuesta === "si" ? "Sí" : "No"}</span>
           </Card>
+          {premio != null && (
+            <Card className="flex items-center justify-between">
+              <span className="text-sm text-ink-soft">Premio en juego</span>
+              <span className="font-display text-base font-bold text-mint">${premio.premio.toLocaleString("es-MX")}</span>
+            </Card>
+          )}
           <Card className="flex items-center justify-between">
             <span className="text-sm text-ink-soft">Tu depósito</span>
             <span className="font-display text-sm tabular-nums">
-              $<Mono>{boleto.monto.toLocaleString("es-MX")}</Mono> MXN -- regresa completo
+              $<Mono>{boleto.monto.toLocaleString("es-MX")}</Mono> MXN, regresa completo
             </span>
           </Card>
           <Card>
@@ -112,6 +121,10 @@ function BoletoContenido() {
           Cuando el nivel se llena, un operador confirma el resultado real y se sortea el premio entre quienes
           acertaron. Tu depósito regresa completo de cualquier forma.
         </p>
+
+        <SecondaryButton className="mt-6" onClick={() => router.push("/home")}>
+          Volver al inicio
+        </SecondaryButton>
       </div>
     </Screen>
   );

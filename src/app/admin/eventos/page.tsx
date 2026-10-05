@@ -53,7 +53,7 @@ export default function AdminEventosPage() {
     const { data, error } = await supabase
       .from("eventos")
       .select("id, nombre, categoria, pregunta, probabilidad, estado, fuente_resolucion, premio_override, premio_estado, fecha_texto, exposure_limite_mxn")
-      .order("creado_en", { ascending: false });
+      .order("actualizado_en", { ascending: false }); // eventos no tiene creado_en
     if (!error) setEventos((data as EventoAdmin[]) ?? []);
     setCargando(false);
   }
